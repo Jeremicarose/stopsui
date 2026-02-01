@@ -1,0 +1,68 @@
+/// Order Registry for StopSui
+/// Manages stop-loss and take-profit orders
+module stopsui::order_registry {
+    use sui::object::{Self, UID, ID};
+    use sui::transfer;
+    use sui::tx_context::{Self, TxContext};
+    use sui::clock::Clock;
+    use sui::event;
+
+    // ============ Errors ============
+
+    const ENotOrderOwner: u64 = 0;
+    const EOrderNotPending: u64 = 1;
+    const EInvalidTriggerPrice: u64 = 2;
+
+    // ============ Constants ============
+
+    /// Order directions
+    const DIRECTION_STOP_LOSS: u8 = 0;    // Sell when price drops below trigger
+    const DIRECTION_TAKE_PROFIT: u8 = 1;  // Sell when price rises above trigger
+
+    /// Order statuses
+    const STATUS_PENDING: u8 = 0;
+    const STATUS_EXECUTED: u8 = 1;
+    const STATUS_CANCELLED: u8 = 2;
+
+    // ============ Types ============
+
+    /// Individual stop-loss/take-profit order
+    /// Owned by the user who created it
+    struct StopOrder has key, store {
+        id: UID,
+        owner: address,
+        base_amount: u64,       // Amount of SUI to sell
+        trigger_price: u64,     // Price threshold (scaled by 1e9)
+        direction: u8,          // STOP_LOSS or TAKE_PROFIT
+        status: u8,             // PENDING, EXECUTED, or CANCELLED
+        created_at: u64,        // Timestamp in ms
+    }
+
+    /// Shared registry tracking all orders
+    struct OrderRegistry has key {
+        id: UID,
+        total_orders: u64,
+        active_orders: u64,
+    }
+
+    // ============ Events ============
+
+    struct OrderCreated has copy, drop {
+        order_id: ID,
+        owner: address,
+        base_amount: u64,
+        trigger_price: u64,
+        direction: u8,
+    }
+
+    struct OrderCancelled has copy, drop {
+        order_id: ID,
+        owner: address,
+    }
+
+    struct OrderExecuted has copy, drop {
+        order_id: ID,
+        owner: address,
+        execution_price: u64,
+    }
+}

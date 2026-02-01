@@ -1,0 +1,17 @@
+[package]
+name = "stopsui"
+version = "0.1.0"
+edition = "2024.beta"
+
+[dependencies]
+Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "mainnet-v1.37.1" }
+DeepBook = { git = "https://github.com/MystenLabs/deepbook-v3.git", subdir = "packages/deepbook", rev = "main" }
+Pyth = { git = "https://github.com/pyth-network/pyth-crosschain.git", subdir = "target_chains/sui/contracts", rev = "main" }
+
+[addresses]
+stopsui = "0x0"
+sui = "0x2"
+deepbook = "0xdee9"
+
+[dev-addresses]
+stopsui = "0x0"
