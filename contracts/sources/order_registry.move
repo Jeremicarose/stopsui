@@ -149,4 +149,45 @@ module stopsui::order_registry {
             execution_price,
         });
     }
+
+    // ============ View Functions ============
+
+    public fun order_id(order: &StopOrder): ID {
+        object::uid_to_inner(&order.id)
+    }
+
+    public fun order_owner(order: &StopOrder): address {
+        order.owner
+    }
+
+    public fun order_amount(order: &StopOrder): u64 {
+        order.base_amount
+    }
+
+    public fun order_trigger_price(order: &StopOrder): u64 {
+        order.trigger_price
+    }
+
+    public fun order_status(order: &StopOrder): u8 {
+        order.status
+    }
+
+    public fun order_direction(order: &StopOrder): u8 {
+        order.direction
+    }
+
+    public fun is_pending(order: &StopOrder): bool {
+        order.status == STATUS_PENDING
+    }
+
+    public fun registry_stats(registry: &OrderRegistry): (u64, u64) {
+        (registry.total_orders, registry.active_orders)
+    }
+
+    // ============ Test Helpers ============
+
+    #[test_only]
+    public fun init_for_testing(ctx: &mut TxContext) {
+        init(ctx)
+    }
 }
