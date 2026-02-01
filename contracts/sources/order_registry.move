@@ -65,4 +65,52 @@ module stopsui::order_registry {
         owner: address,
         execution_price: u64,
     }
+
+    // ============ Init ============
+
+    fun init(ctx: &mut TxContext) {
+        let registry = OrderRegistry {
+            id: object::new(ctx),
+            total_orders: 0,
+            active_orders: 0,
+        };
+        transfer::share_object(registry);
+    }
+
+    // ============ Public Functions ============
+
+    /// Create a new stop-loss order
+    public fun create_stop_loss(
+        registry: &mut OrderRegistry,
+        base_amount: u64,
+        trigger_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): StopOrder {
+        assert!(trigger_price > 0, EInvalidTriggerPrice);
+
+        let owner = tx_context::sender(ctx);
+        let order = StopOrder {
+            id: object::new(ctx),
+            owner,
+            base_amount,
+            trigger_price,
+            direction: DIRECTION_STOP_LOSS,
+            status: STATUS_PENDING,
+            created_at: sui::clock::timestamp_ms(clock),
+        };
+
+        registry.total_orders = registry.total_orders + 1;
+        registry.active_orders = registry.active_orders + 1;
+
+        event::emit(OrderCreated {
+            order_id: object::uid_to_inner(&order.id),
+            owner,
+            base_amount,
+            trigger_price,
+            direction: DIRECTION_STOP_LOSS,
+        });
+
+        order
+    }
 }
