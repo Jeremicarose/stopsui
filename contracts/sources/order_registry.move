@@ -113,4 +113,40 @@ module stopsui::order_registry {
 
         order
     }
+
+    /// Cancel a pending order (only owner can cancel)
+    public fun cancel_order(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        ctx: &TxContext
+    ) {
+        assert!(order.owner == tx_context::sender(ctx), ENotOrderOwner);
+        assert!(order.status == STATUS_PENDING, EOrderNotPending);
+
+        order.status = STATUS_CANCELLED;
+        registry.active_orders = registry.active_orders - 1;
+
+        event::emit(OrderCancelled {
+            order_id: object::uid_to_inner(&order.id),
+            owner: order.owner,
+        });
+    }
+
+    /// Mark order as executed (called by executor module)
+    public fun mark_executed(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        execution_price: u64,
+    ) {
+        assert!(order.status == STATUS_PENDING, EOrderNotPending);
+
+        order.status = STATUS_EXECUTED;
+        registry.active_orders = registry.active_orders - 1;
+
+        event::emit(OrderExecuted {
+            order_id: object::uid_to_inner(&order.id),
+            owner: order.owner,
+            execution_price,
+        });
+    }
 }
