@@ -47,7 +47,7 @@ module stopsui::order_registry {
 
     // ============ Events ============
 
-    struct OrderCreated has copy, drop {
+    public struct OrderCreated has copy, drop {
         order_id: ID,
         owner: address,
         base_amount: u64,
