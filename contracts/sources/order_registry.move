@@ -87,6 +87,43 @@ module stopsui::order_registry {
         clock: &Clock,
         ctx: &mut TxContext
     ): StopOrder {
+        create_order_internal(
+            registry,
+            base_amount,
+            trigger_price,
+            DIRECTION_STOP_LOSS,
+            clock,
+            ctx
+        )
+    }
+
+    /// Create a new take-profit order
+    public fun create_take_profit(
+        registry: &mut OrderRegistry,
+        base_amount: u64,
+        trigger_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): StopOrder {
+        create_order_internal(
+            registry,
+            base_amount,
+            trigger_price,
+            DIRECTION_TAKE_PROFIT,
+            clock,
+            ctx
+        )
+    }
+
+    /// Internal order creation
+    fun create_order_internal(
+        registry: &mut OrderRegistry,
+        base_amount: u64,
+        trigger_price: u64,
+        direction: u8,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): StopOrder {
         assert!(trigger_price > 0, EInvalidTriggerPrice);
 
         let owner = tx_context::sender(ctx);
@@ -95,9 +132,9 @@ module stopsui::order_registry {
             owner,
             base_amount,
             trigger_price,
-            direction: DIRECTION_STOP_LOSS,
+            direction,
             status: STATUS_PENDING,
-            created_at: sui::clock::timestamp_ms(clock),
+            created_at: clock.timestamp_ms(),
         };
 
         registry.total_orders = registry.total_orders + 1;
@@ -108,7 +145,7 @@ module stopsui::order_registry {
             owner,
             base_amount,
             trigger_price,
-            direction: DIRECTION_STOP_LOSS,
+            direction,
         });
 
         order
