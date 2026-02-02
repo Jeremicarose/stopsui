@@ -44,13 +44,13 @@ module stopsui::vault {
 
     /// Capability that allows the executor to withdraw from vault
     /// Only one exists, held by the executor module
-    struct ExecutorCap has key, store {
+    public struct ExecutorCap has key, store {
         id: UID,
     }
 
     // ============ Events ============
 
-    struct DepositEvent has copy, drop {
+    public struct DepositEvent has copy, drop {
         order_id: ID,
         owner: address,
         amount: u64,
