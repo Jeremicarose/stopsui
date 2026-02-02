@@ -28,7 +28,7 @@ module stopsui::order_registry {
 
     /// Individual stop-loss/take-profit order
     /// Owned by the user who created it
-    struct StopOrder has key, store {
+    public struct StopOrder has key, store {
         id: UID,
         owner: address,
         base_amount: u64,       // Amount of SUI to sell
