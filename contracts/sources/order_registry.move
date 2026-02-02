@@ -39,7 +39,7 @@ module stopsui::order_registry {
     }
 
     /// Shared registry tracking all orders
-    struct OrderRegistry has key {
+    public struct OrderRegistry has key {
         id: UID,
         total_orders: u64,
         active_orders: u64,
