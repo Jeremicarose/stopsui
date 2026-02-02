@@ -28,7 +28,7 @@ module stopsui::executor {
     // ============ Types ============
 
     /// Receipt returned after successful execution
-    struct ExecutionReceipt has key, store {
+    public struct ExecutionReceipt has key, store {
         id: UID,
         order_id: sui::object::ID,
         owner: address,

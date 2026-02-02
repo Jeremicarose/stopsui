@@ -55,12 +55,12 @@ module stopsui::order_registry {
         direction: u8,
     }
 
-    struct OrderCancelled has copy, drop {
+    public struct OrderCancelled has copy, drop {
         order_id: ID,
         owner: address,
     }
 
-    struct OrderExecuted has copy, drop {
+    public struct OrderExecuted has copy, drop {
         order_id: ID,
         owner: address,
         execution_price: u64,
