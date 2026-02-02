@@ -56,7 +56,7 @@ module stopsui::vault {
         amount: u64,
     }
 
-    struct WithdrawEvent has copy, drop {
+    public struct WithdrawEvent has copy, drop {
         order_id: ID,
         owner: address,
         amount: u64,
