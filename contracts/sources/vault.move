@@ -24,7 +24,7 @@ module stopsui::vault {
 
     /// Shared vault that holds all user deposits
     /// Uses a Table to map order IDs to their locked deposits
-    struct Vault has key {
+    public struct Vault has key {
         id: UID,
         /// Maps order_id -> Deposit
         deposits: Table<ID, Deposit>,
@@ -33,7 +33,7 @@ module stopsui::vault {
     }
 
     /// Individual deposit locked for a specific order
-    struct Deposit has store {
+    public struct Deposit has store {
         /// Owner of this deposit (can cancel)
         owner: address,
         /// Locked SUI balance
