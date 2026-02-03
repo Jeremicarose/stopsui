@@ -1,17 +1,16 @@
 /// Executor module for StopSui
 /// Handles order execution when price conditions are met
-/// Integrates with Pyth Network for price feeds
+///
+/// Price Feed Architecture:
+/// - Keeper fetches SUI/USD price from Pyth Hermes API
+/// - Keeper calls pyth::update_single_price_feed to update on-chain
+/// - Keeper reads fresh price and calls execute_order
+/// - Contract validates price is from authorized keeper
 module stopsui::executor {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
     use sui::clock::Clock;
     use sui::event;
-
-    // Pyth imports
-    use pyth::price_info::PriceInfoObject;
-    use pyth::pyth;
-    use pyth::price;
-    use pyth::i64;
 
     use stopsui::vault::{Self, Vault, ExecutorCap};
     use stopsui::order_registry::{Self, StopOrder, OrderRegistry};
@@ -21,27 +20,28 @@ module stopsui::executor {
     const ETriggerNotMet: u64 = 0;
     const EStalePrice: u64 = 1;
     const EOrderNotPending: u64 = 2;
-    const ENegativePrice: u64 = 3;
-    const EInvalidPriceExponent: u64 = 4;
+    const EPriceOutOfRange: u64 = 3;
 
     // ============ Constants ============
 
-    /// Maximum age of price data (60 seconds)
-    const MAX_PRICE_AGE_SECONDS: u64 = 60;
-
     /// Our internal price precision (1e9 for 9 decimals)
+    /// Price of $3.50 = 3_500_000_000
     const PRICE_PRECISION: u64 = 1_000_000_000;
+
+    /// Maximum reasonable SUI price ($1000)
+    const MAX_PRICE: u64 = 1_000_000_000_000; // $1000
+
+    /// Minimum reasonable SUI price ($0.001)
+    const MIN_PRICE: u64 = 1_000_000; // $0.001
 
     // ============ Events ============
 
-    public struct OrderExecuted has copy, drop {
+    public struct OrderExecutedEvent has copy, drop {
         order_id: ID,
         owner: address,
-        sui_sold: u64,
-        usdc_received: u64,
+        sui_amount: u64,
         execution_price: u64,
-        pyth_price: u64,
-        pyth_expo: u64,
+        timestamp: u64,
     }
 
     // ============ Types ============
@@ -57,69 +57,11 @@ module stopsui::executor {
         timestamp: u64,
     }
 
-    // ============ Price Helpers ============
-
-    /// Extract price from Pyth PriceInfoObject and convert to our precision
-    /// Pyth prices have variable exponents (usually negative, e.g., -8)
-    /// We normalize to our PRICE_PRECISION (1e9)
-    public fun get_pyth_price(
-        price_info_object: &PriceInfoObject,
-        clock: &Clock,
-    ): u64 {
-        // Get price with freshness check (max 60 seconds old)
-        let price_struct = pyth::get_price_no_older_than(
-            price_info_object,
-            clock,
-            MAX_PRICE_AGE_SECONDS
-        );
-
-        // Extract price value (I64 - can be negative for some assets, but not SUI/USD)
-        let price_i64 = price::get_price(&price_struct);
-        let price_magnitude = i64::get_magnitude_if_positive(&price_i64);
-
-        // Get exponent (usually negative, e.g., -8 means price is in 1e-8 units)
-        let expo_i64 = price::get_expo(&price_struct);
-        let expo_negative = i64::get_is_negative(&expo_i64);
-        let expo_magnitude = i64::get_magnitude_if_negative(&expo_i64);
-
-        // Convert to our precision (1e9)
-        // If expo is -8, price is X * 10^-8
-        // We want X * 10^-8 * 10^9 = X * 10^1 = X * 10
-        if (expo_negative) {
-            // Negative exponent (most common case)
-            // expo_magnitude is the absolute value (e.g., 8 for -8)
-            if (expo_magnitude <= 9) {
-                // Need to multiply by 10^(9 - expo_magnitude)
-                let multiplier = pow10(9 - expo_magnitude);
-                price_magnitude * multiplier
-            } else {
-                // expo_magnitude > 9, need to divide
-                let divisor = pow10(expo_magnitude - 9);
-                price_magnitude / divisor
-            }
-        } else {
-            // Positive exponent (rare for prices)
-            let expo_pos = i64::get_magnitude_if_positive(&expo_i64);
-            let multiplier = pow10(9 + expo_pos);
-            price_magnitude * multiplier
-        }
-    }
-
-    /// Power of 10 helper
-    fun pow10(exp: u64): u64 {
-        let mut result = 1u64;
-        let mut i = 0u64;
-        while (i < exp) {
-            result = result * 10;
-            i = i + 1;
-        };
-        result
-    }
-
     // ============ Core Execution ============
 
     /// Check if a stop-loss trigger condition is met
-    /// Returns true if current_price <= trigger_price for stop-loss
+    /// Returns true if current_price <= trigger_price for stop-loss (direction=0)
+    /// Returns true if current_price >= trigger_price for take-profit (direction=1)
     public fun check_trigger(
         order: &StopOrder,
         current_price: u64,
@@ -136,33 +78,38 @@ module stopsui::executor {
         }
     }
 
-    /// Execute a stop-loss order using Pyth price feed
-    /// Called by keeper when price condition is met
+    /// Execute a stop-loss order
     ///
-    /// The keeper must first update the Pyth price feed by calling
-    /// pyth::update_single_price_feed with fresh VAA data from Hermes
-    public fun execute_order_with_pyth(
+    /// Called by keeper after fetching and validating price from Pyth.
+    /// The keeper workflow is:
+    /// 1. Fetch latest price VAA from Pyth Hermes API
+    /// 2. Call pyth::update_single_price_feed to update on-chain price
+    /// 3. Read the price value from the updated PriceInfoObject
+    /// 4. Call this function with the price
+    ///
+    /// The ExecutorCap ensures only authorized keepers can execute.
+    public fun execute_order(
         registry: &mut OrderRegistry,
         order: &mut StopOrder,
         vault: &mut Vault,
         executor_cap: &ExecutorCap,
-        price_info_object: &PriceInfoObject,
+        pyth_price: u64,  // Price from Pyth (keeper validated)
         clock: &Clock,
         ctx: &mut TxContext
     ): (Coin<SUI>, ExecutionReceipt) {
         // Verify order is still pending
         assert!(order_registry::is_pending(order), EOrderNotPending);
 
-        // Get current price from Pyth (validated for freshness)
-        let current_price = get_pyth_price(price_info_object, clock);
+        // Basic price sanity check
+        assert!(pyth_price >= MIN_PRICE && pyth_price <= MAX_PRICE, EPriceOutOfRange);
 
         // Verify trigger condition is met
-        assert!(check_trigger(order, current_price), ETriggerNotMet);
+        assert!(check_trigger(order, pyth_price), ETriggerNotMet);
 
         let order_id = order_registry::order_id(order);
         let sui_amount = order_registry::order_amount(order);
 
-        // Withdraw SUI from vault
+        // Withdraw SUI from vault (ExecutorCap authorizes this)
         let (sui_coin, owner) = vault::withdraw_for_execution(
             vault,
             executor_cap,
@@ -170,22 +117,22 @@ module stopsui::executor {
             ctx
         );
 
-        // Calculate USDC equivalent (for receipt purposes)
-        // In production, DeepBook will determine actual received amount
-        let usdc_received = (sui_amount * current_price) / PRICE_PRECISION;
+        // Calculate expected USDC value (for receipt)
+        // In production with DeepBook, actual received amount may differ
+        let usdc_value = (sui_amount * pyth_price) / PRICE_PRECISION;
 
-        // Mark order as executed
-        order_registry::mark_executed(registry, order, current_price);
+        // Mark order as executed in registry
+        order_registry::mark_executed(registry, order, pyth_price);
+
+        let timestamp = clock.timestamp_ms();
 
         // Emit execution event
-        event::emit(OrderExecuted {
+        event::emit(OrderExecutedEvent {
             order_id,
             owner,
-            sui_sold: sui_amount,
-            usdc_received,
-            execution_price: current_price,
-            pyth_price: current_price,
-            pyth_expo: 9, // Our normalized exponent
+            sui_amount,
+            execution_price: pyth_price,
+            timestamp,
         });
 
         // Create execution receipt
@@ -194,38 +141,39 @@ module stopsui::executor {
             order_id,
             owner,
             sui_sold: sui_amount,
-            usdc_received,
-            execution_price: current_price,
-            timestamp: clock.timestamp_ms(),
+            usdc_received: usdc_value,
+            execution_price: pyth_price,
+            timestamp,
         };
 
-        // Return the SUI coin and receipt
-        // Caller is responsible for swapping on DeepBook
+        // Return SUI coin and receipt
+        // Caller handles swap via DeepBook or direct transfer
         (sui_coin, receipt)
     }
 
-    /// Simplified execute that transfers directly to owner
-    /// For MVP without DeepBook integration
+    /// Simplified execution that transfers SUI directly to owner
+    /// For MVP testing without DeepBook integration
     public entry fun execute_order_simple(
         registry: &mut OrderRegistry,
         order: &mut StopOrder,
         vault: &mut Vault,
         executor_cap: &ExecutorCap,
-        price_info_object: &PriceInfoObject,
+        pyth_price: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let (sui_coin, receipt) = execute_order_with_pyth(
+        let (sui_coin, receipt) = execute_order(
             registry,
             order,
             vault,
             executor_cap,
-            price_info_object,
+            pyth_price,
             clock,
             ctx
         );
 
-        // Transfer SUI back to owner (in production, would swap to USDC first)
+        // Transfer SUI back to owner
+        // In production: swap to USDC via DeepBook first
         let owner = receipt.owner;
         transfer::public_transfer(sui_coin, owner);
         transfer::public_transfer(receipt, owner);
@@ -255,5 +203,9 @@ module stopsui::executor {
 
     public fun receipt_timestamp(receipt: &ExecutionReceipt): u64 {
         receipt.timestamp
+    }
+
+    public fun price_precision(): u64 {
+        PRICE_PRECISION
     }
 }
