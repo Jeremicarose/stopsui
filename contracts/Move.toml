@@ -4,11 +4,12 @@ version = "0.1.0"
 edition = "2024.beta"
 
 [dependencies]
-# Pyth Oracle for price feeds (Wormhole is included as transitive dep)
-Pyth = { git = "https://github.com/pyth-network/pyth-crosschain.git", subdir = "target_chains/sui/contracts", rev = "sui-contract-mainnet" }
+# Sui framework is auto-included
 
 [addresses]
 stopsui = "0x0"
+# Pyth mainnet package - we'll call this via PTB at runtime
+pyth = "0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91"
 
 [dev-addresses]
 stopsui = "0x0"
