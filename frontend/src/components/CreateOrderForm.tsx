@@ -171,13 +171,16 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
         <div className="mb-4">
           <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
             Trigger Price (USD)
+            <span className="ml-2 text-xs text-[var(--text-muted)] font-normal">
+              {isStopLoss ? '← Set below current price' : '← Set above current price'}
+            </span>
           </label>
           <div className="relative">
             <input
               type="number"
               value={triggerPrice}
               onChange={(e) => setTriggerPrice(e.target.value)}
-              placeholder={priceData ? priceData.price.toFixed(4) : '0.00'}
+              placeholder={priceData ? (isStopLoss ? (priceData.price * 0.95).toFixed(4) : (priceData.price * 1.05).toFixed(4)) : '0.00'}
               step="0.0001"
               min="0"
               className={inputClass}
@@ -186,9 +189,14 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
               USD
             </span>
           </div>
-          {priceDistance !== null && triggerPrice && (
-            <div className={`mt-2 text-xs ${priceDistance >= 0 ? 'text-[var(--take-profit)]' : 'text-[var(--stop-loss)]'}`}>
-              {priceDistance >= 0 ? '↑' : '↓'} {Math.abs(priceDistance).toFixed(2)}% from current price
+          {priceData && (
+            <div className="mt-2 text-xs text-[var(--text-muted)]">
+              Current: ${priceData.price.toFixed(4)}
+              {triggerPrice && priceDistance !== null && (
+                <span className={`ml-2 ${priceDistance >= 0 ? 'text-[var(--take-profit)]' : 'text-[var(--stop-loss)]'}`}>
+                  ({priceDistance >= 0 ? '↑' : '↓'} {Math.abs(priceDistance).toFixed(2)}%)
+                </span>
+              )}
             </div>
           )}
         </div>
