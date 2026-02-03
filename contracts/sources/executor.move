@@ -190,6 +190,11 @@ module stopsui::executor {
 
     // ============ View Functions ============
 
+    /// Original receipt_details for compatibility
+    public fun receipt_details(receipt: &ExecutionReceipt): (ID, address, u64, u64, u64) {
+        (receipt.order_id, receipt.owner, receipt.sui_sold, receipt.usdc_received, receipt.execution_price)
+    }
+
     public fun receipt_order_id(receipt: &ExecutionReceipt): ID {
         receipt.order_id
     }
