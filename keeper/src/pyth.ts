@@ -33,21 +33,24 @@ export async function fetchSuiPrice(): Promise<bigint> {
   // Remove 0x prefix if present for Hermes API
   const feedId = config.suiUsdPriceFeedId.replace('0x', '');
 
-  const url = `${config.pythHermesUrl}/v2/updates/price/latest?ids[]=${feedId}`;
+  // Use /api/latest_price_feeds endpoint
+  const url = `${config.pythHermesUrl}/api/latest_price_feeds?ids[]=${feedId}`;
 
   const response = await fetch(url);
 
   if (!response.ok) {
-    throw new Error(`Pyth API error: ${response.status} ${response.statusText}`);
+    const text = await response.text();
+    throw new Error(`Pyth API error: ${response.status} ${response.statusText} - ${text}`);
   }
 
-  const data: HermesResponse = await response.json();
+  // Response is an array of price feeds
+  const data = await response.json() as PythPriceUpdate[];
 
-  if (!data.parsed || data.parsed.length === 0) {
+  if (!Array.isArray(data) || data.length === 0) {
     throw new Error('No price data returned from Pyth');
   }
 
-  const priceUpdate = data.parsed[0];
+  const priceUpdate = data[0];
   const rawPrice = BigInt(priceUpdate.price.price);
   const expo = priceUpdate.price.expo;
 

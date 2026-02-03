@@ -42,7 +42,7 @@ export const config = {
   pythHermesUrl: optionalEnv('PYTH_HERMES_URL', 'https://hermes.pyth.network'),
   suiUsdPriceFeedId: optionalEnv(
     'SUI_USD_PRICE_FEED_ID',
-    '0x50c67b3fd225db8912a424dd4baed60ffdde625ed2feaaf283724f9608fea266'
+    '0x5a035d5440f5c163069af66062bac6c79377bf88396fa27e6067bfca8096d280'
   ),
 
   // Polling

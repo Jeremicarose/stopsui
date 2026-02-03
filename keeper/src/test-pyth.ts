@@ -15,24 +15,25 @@ async function testPythPrice() {
   console.log(`Feed ID: ${SUI_USD_FEED_ID}\n`);
 
   try {
-    // Fetch latest price
-    const url = `${HERMES_URL}/v2/updates/price/latest?ids[]=${SUI_USD_FEED_ID}`;
+    // Fetch latest price using /api/latest_price_feeds endpoint
+    const url = `${HERMES_URL}/api/latest_price_feeds?ids[]=${SUI_USD_FEED_ID}`;
     console.log(`Fetching: ${url}\n`);
 
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const text = await response.text();
+      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${text}`);
     }
 
     const data = await response.json();
 
-    // Parse response
-    if (!data.parsed || data.parsed.length === 0) {
+    // Parse response (array of price feeds)
+    if (!Array.isArray(data) || data.length === 0) {
       throw new Error('No price data in response');
     }
 
-    const priceData = data.parsed[0];
+    const priceData = data[0];
     console.log('Raw Response:');
     console.log(JSON.stringify(priceData, null, 2));
     console.log();
