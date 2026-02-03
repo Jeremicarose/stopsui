@@ -1,0 +1,133 @@
+"use client";
+
+import { useEffect, useState, useCallback } from 'react';
+import { useSuiClient, useCurrentAccount } from '@mysten/dapp-kit';
+import { CONTRACT, ORDER_STATUS, ORDER_DIRECTION, MIST_PER_SUI, PRICE_PRECISION } from '@/lib/constants';
+import type { OrderStatus, OrderDirection } from '@/lib/constants';
+
+export interface Order {
+  id: string;
+  owner: string;
+  baseAmount: bigint;
+  triggerPrice: bigint;
+  direction: OrderDirection;
+  status: OrderStatus;
+  createdAt: number;
+}
+
+export interface FormattedOrder extends Order {
+  amountSui: number;
+  triggerPriceUsd: number;
+  statusLabel: string;
+  typeLabel: string;
+}
+
+function formatOrder(order: Order): FormattedOrder {
+  return {
+    ...order,
+    amountSui: Number(order.baseAmount) / Number(MIST_PER_SUI),
+    triggerPriceUsd: Number(order.triggerPrice) / Number(PRICE_PRECISION),
+    statusLabel: order.status === ORDER_STATUS.PENDING
+      ? 'Pending'
+      : order.status === ORDER_STATUS.EXECUTED
+        ? 'Executed'
+        : 'Cancelled',
+    typeLabel: order.direction === ORDER_DIRECTION.STOP_LOSS ? 'Stop-Loss' : 'Take-Profit',
+  };
+}
+
+export function useOrders() {
+  const client = useSuiClient();
+  const account = useCurrentAccount();
+  const [orders, setOrders] = useState<FormattedOrder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchOrders = useCallback(async () => {
+    if (!account?.address) {
+      setOrders([]);
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+
+      // Query OrderCreated events for this user
+      const events = await client.queryEvents({
+        query: {
+          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderCreated`,
+        },
+        limit: 50,
+      });
+
+      // Filter for user's orders and fetch their current state
+      const userOrderIds: string[] = [];
+
+      for (const event of events.data) {
+        const parsed = event.parsedJson as { order_id: string; owner: string };
+        if (parsed.owner === account.address) {
+          userOrderIds.push(parsed.order_id);
+        }
+      }
+
+      // Fetch order objects
+      const orderPromises = userOrderIds.map(async (orderId) => {
+        try {
+          const obj = await client.getObject({
+            id: orderId,
+            options: { showContent: true },
+          });
+
+          if (obj.data?.content && obj.data.content.dataType === 'moveObject') {
+            const fields = obj.data.content.fields as Record<string, unknown>;
+
+            return {
+              id: orderId,
+              owner: fields.owner as string,
+              baseAmount: BigInt(fields.base_amount as string),
+              triggerPrice: BigInt(fields.trigger_price as string),
+              direction: fields.direction as OrderDirection,
+              status: fields.status as OrderStatus,
+              createdAt: parseInt(fields.created_at as string),
+            } as Order;
+          }
+          return null;
+        } catch {
+          return null;
+        }
+      });
+
+      const fetchedOrders = await Promise.all(orderPromises);
+      const validOrders = fetchedOrders
+        .filter((o): o is Order => o !== null)
+        .map(formatOrder)
+        .sort((a, b) => b.createdAt - a.createdAt);
+
+      setOrders(validOrders);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client, account?.address]);
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 10000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
+
+  const pendingOrders = orders.filter(o => o.status === ORDER_STATUS.PENDING);
+  const historyOrders = orders.filter(o => o.status !== ORDER_STATUS.PENDING);
+
+  return {
+    orders,
+    pendingOrders,
+    historyOrders,
+    isLoading,
+    error,
+    refetch: fetchOrders,
+  };
+}
