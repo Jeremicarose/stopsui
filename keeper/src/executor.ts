@@ -64,9 +64,9 @@ export async function executeOrder(
     // Build transaction
     const tx = new Transaction();
 
-    // Call execute_order
+    // Call execute_triggered_order (deployed function name)
     tx.moveCall({
-      target: `${config.packageId}::entry::execute_order`,
+      target: `${config.packageId}::entry::execute_triggered_order`,
       arguments: [
         tx.object(config.orderRegistryId),    // registry: &mut OrderRegistry
         tx.object(order.id),                   // order: &mut StopOrder
