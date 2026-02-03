@@ -4,13 +4,8 @@ version = "0.1.0"
 edition = "2024.beta"
 
 [dependencies]
-Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "framework/mainnet" }
-
-# Pyth Oracle for price feeds
+# Pyth Oracle for price feeds (Wormhole is included as transitive dep)
 Pyth = { git = "https://github.com/pyth-network/pyth-crosschain.git", subdir = "target_chains/sui/contracts", rev = "sui-contract-mainnet" }
-
-# Wormhole (required by Pyth)
-Wormhole = { git = "https://github.com/wormhole-foundation/wormhole.git", subdir = "sui/wormhole", rev = "sui/mainnet" }
 
 [addresses]
 stopsui = "0x0"
