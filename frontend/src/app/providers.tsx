@@ -2,15 +2,14 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SuiClientProvider, WalletProvider } from "@mysten/dapp-kit";
-import { getFullnodeUrl } from "@mysten/sui/client";
 import { useState } from "react";
 
 import "@mysten/dapp-kit/dist/index.css";
 
 const networks = {
-  mainnet: { url: getFullnodeUrl("mainnet") },
-  testnet: { url: getFullnodeUrl("testnet") },
-  devnet: { url: getFullnodeUrl("devnet") },
+  mainnet: { url: "https://fullnode.mainnet.sui.io:443" },
+  testnet: { url: "https://fullnode.testnet.sui.io:443" },
+  devnet: { url: "https://fullnode.devnet.sui.io:443" },
 };
 
 export function Providers({ children }: { children: React.ReactNode }) {
