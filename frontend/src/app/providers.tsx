@@ -2,7 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SuiClientProvider, WalletProvider } from "@mysten/dapp-kit";
-import { SuiClient } from "@mysten/sui/client";
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
 import { useState, useMemo } from "react";
 
 import "@mysten/dapp-kit/dist/index.css";
@@ -11,7 +11,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(() => new QueryClient());
 
   const suiClient = useMemo(
-    () => new SuiClient({ url: "https://fullnode.testnet.sui.io:443" }),
+    () => new SuiJsonRpcClient({ url: getJsonRpcFullnodeUrl("testnet") }),
     []
   );
 
