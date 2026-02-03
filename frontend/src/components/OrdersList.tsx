@@ -144,19 +144,6 @@ export function OrdersList() {
     }
   }, [account, signAndExecute, client, refetch]);
 
-  if (!account) {
-    return (
-      <div className="card p-6 animate-slide-up delay-200">
-        <div className="text-center py-8">
-          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" className="mx-auto mb-4 text-[var(--text-muted)]">
-            <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="2"/>
-            <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="2"/>
-          </svg>
-          <p className="text-[var(--text-muted)]">Connect wallet to view orders</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="card p-6 animate-slide-up delay-200">
