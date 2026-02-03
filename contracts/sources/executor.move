@@ -78,22 +78,32 @@ module stopsui::executor {
         }
     }
 
-    /// Execute a stop-loss order
-    ///
-    /// Called by keeper after fetching and validating price from Pyth.
-    /// The keeper workflow is:
-    /// 1. Fetch latest price VAA from Pyth Hermes API
-    /// 2. Call pyth::update_single_price_feed to update on-chain price
-    /// 3. Read the price value from the updated PriceInfoObject
-    /// 4. Call this function with the price
-    ///
-    /// The ExecutorCap ensures only authorized keepers can execute.
+    /// Execute a stop-loss order (original signature for upgrade compatibility)
+    /// Returns only ExecutionReceipt, transfers SUI to owner internally
     public fun execute_order(
         registry: &mut OrderRegistry,
         order: &mut StopOrder,
         vault: &mut Vault,
         executor_cap: &ExecutorCap,
-        pyth_price: u64,  // Price from Pyth (keeper validated)
+        current_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): ExecutionReceipt {
+        let (sui_coin, receipt) = execute_order_internal(
+            registry, order, vault, executor_cap, current_price, clock, ctx
+        );
+        // Transfer SUI to owner
+        transfer::public_transfer(sui_coin, receipt.owner);
+        receipt
+    }
+
+    /// Internal execute that returns coin (for future DeepBook integration)
+    fun execute_order_internal(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        vault: &mut Vault,
+        executor_cap: &ExecutorCap,
+        pyth_price: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ): (Coin<SUI>, ExecutionReceipt) {
@@ -162,7 +172,7 @@ module stopsui::executor {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let (sui_coin, receipt) = execute_order(
+        let (sui_coin, receipt) = execute_order_internal(
             registry,
             order,
             vault,
@@ -173,7 +183,6 @@ module stopsui::executor {
         );
 
         // Transfer SUI back to owner
-        // In production: swap to USDC via DeepBook first
         let owner = receipt.owner;
         transfer::public_transfer(sui_coin, owner);
         transfer::public_transfer(receipt, owner);

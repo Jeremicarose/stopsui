@@ -95,15 +95,31 @@ module stopsui::entry {
 
     // ============ Keeper Entry Points ============
 
-    /// Execute a triggered order
-    /// Called by keeper when Pyth price triggers the condition
-    ///
-    /// Keeper workflow:
-    /// 1. Monitor Pyth Hermes for SUI/USD price
-    /// 2. When price triggers an order condition:
-    ///    a. Fetch latest price VAA from Hermes
-    ///    b. Build PTB: update Pyth price -> call execute_order
-    /// 3. Price is validated by ExecutorCap (only authorized keepers)
+    /// Execute a triggered order (original function name for compatibility)
+    public entry fun execute_triggered_order(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        vault: &mut Vault,
+        executor_cap: &ExecutorCap,
+        current_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let receipt = executor::execute_order(
+            registry,
+            order,
+            vault,
+            executor_cap,
+            current_price,
+            clock,
+            ctx
+        );
+
+        let (_, owner, _, _, _) = executor::receipt_details(&receipt);
+        transfer::public_transfer(receipt, owner);
+    }
+
+    /// Execute a triggered order (new alias)
     public entry fun execute_order(
         registry: &mut OrderRegistry,
         order: &mut StopOrder,
@@ -113,7 +129,7 @@ module stopsui::entry {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        executor::execute_order_simple(
+        execute_triggered_order(
             registry,
             order,
             vault,
