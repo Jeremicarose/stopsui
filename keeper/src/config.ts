@@ -40,9 +40,10 @@ export const config = {
 
   // Pyth oracle
   pythHermesUrl: optionalEnv('PYTH_HERMES_URL', 'https://hermes.pyth.network'),
+  // New SUI/USD feed ID (Pyth migrated feeds in 2025)
   suiUsdPriceFeedId: optionalEnv(
     'SUI_USD_PRICE_FEED_ID',
-    '0x5a035d5440f5c163069af66062bac6c79377bf88396fa27e6067bfca8096d280'
+    '23d731511354384c7b8e167cb761c67d0699fbc64b072214656208643501955b'
   ),
 
   // Polling

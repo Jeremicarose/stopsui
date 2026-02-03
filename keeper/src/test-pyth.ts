@@ -7,7 +7,8 @@
 
 // Pyth Hermes API endpoint
 const HERMES_URL = 'https://hermes.pyth.network';
-const SUI_USD_FEED_ID = '5a035d5440f5c163069af66062bac6c79377bf88396fa27e6067bfca8096d280';
+// New SUI/USD feed ID (Pyth migrated feeds)
+const SUI_USD_FEED_ID = '23d731511354384c7b8e167cb761c67d0699fbc64b072214656208643501955b';
 
 async function testPythPrice() {
   console.log('Testing Pyth SUI/USD Price Feed\n');
