@@ -75,6 +75,8 @@ export function ScalingOrders({ onSuccess }: { onSuccess?: () => void }) {
       setIsSubmitting(true);
 
       const tx = new Transaction();
+      tx.setGasBudget(50000000); // 0.05 SUI max gas
+
       const functionName = orderType === 'stop-loss'
         ? 'create_stop_loss_order'
         : 'create_take_profit_order';

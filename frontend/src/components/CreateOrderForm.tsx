@@ -55,6 +55,7 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
 
       // Build transaction
       const tx = new Transaction();
+      tx.setGasBudget(50000000); // 0.05 SUI max gas
 
       // Split coin for the order
       const [coin] = tx.splitCoins(tx.gas, [amountMist]);
