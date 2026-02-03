@@ -5,9 +5,6 @@ module stopsui::entry {
     use sui::sui::SUI;
     use sui::clock::Clock;
 
-    // Pyth imports
-    use pyth::price_info::PriceInfoObject;
-
     use stopsui::vault::{Self, Vault, ExecutorCap};
     use stopsui::order_registry::{Self, OrderRegistry, StopOrder};
     use stopsui::executor;
@@ -16,6 +13,10 @@ module stopsui::entry {
 
     /// Create a stop-loss order and deposit SUI in one transaction
     /// This is the main function users call from the frontend
+    ///
+    /// Example: User wants to sell 100 SUI if price drops to $2.50
+    /// - sui_coin: 100 SUI
+    /// - trigger_price: 2_500_000_000 (scaled by 1e9)
     public entry fun create_stop_loss_order(
         registry: &mut OrderRegistry,
         vault: &mut Vault,
@@ -44,6 +45,10 @@ module stopsui::entry {
     }
 
     /// Create a take-profit order and deposit SUI in one transaction
+    ///
+    /// Example: User wants to sell 100 SUI if price rises to $5.00
+    /// - sui_coin: 100 SUI
+    /// - trigger_price: 5_000_000_000 (scaled by 1e9)
     public entry fun create_take_profit_order(
         registry: &mut OrderRegistry,
         vault: &mut Vault,
@@ -90,19 +95,21 @@ module stopsui::entry {
 
     // ============ Keeper Entry Points ============
 
-    /// Execute a triggered order using Pyth oracle price
-    /// Called by keeper when price condition is met
+    /// Execute a triggered order
+    /// Called by keeper when Pyth price triggers the condition
     ///
-    /// Prerequisites:
-    /// 1. Keeper must call pyth::update_single_price_feed with fresh VAA
-    /// 2. Price must be fresh (< 60 seconds old)
-    /// 3. Price must trigger the order condition
+    /// Keeper workflow:
+    /// 1. Monitor Pyth Hermes for SUI/USD price
+    /// 2. When price triggers an order condition:
+    ///    a. Fetch latest price VAA from Hermes
+    ///    b. Build PTB: update Pyth price -> call execute_order
+    /// 3. Price is validated by ExecutorCap (only authorized keepers)
     public entry fun execute_order(
         registry: &mut OrderRegistry,
         order: &mut StopOrder,
         vault: &mut Vault,
         executor_cap: &ExecutorCap,
-        price_info_object: &PriceInfoObject,
+        pyth_price: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -111,7 +118,7 @@ module stopsui::entry {
             order,
             vault,
             executor_cap,
-            price_info_object,
+            pyth_price,
             clock,
             ctx
         );
@@ -119,21 +126,16 @@ module stopsui::entry {
 
     // ============ View Helpers ============
 
-    /// Get current price from Pyth (for frontend display)
-    public fun get_current_price(
-        price_info_object: &PriceInfoObject,
-        clock: &Clock,
-    ): u64 {
-        executor::get_pyth_price(price_info_object, clock)
-    }
-
-    /// Check if an order would trigger at the current price
+    /// Check if an order would trigger at a given price
     public fun would_trigger(
         order: &StopOrder,
-        price_info_object: &PriceInfoObject,
-        clock: &Clock,
+        price: u64,
     ): bool {
-        let current_price = executor::get_pyth_price(price_info_object, clock);
-        executor::check_trigger(order, current_price)
+        executor::check_trigger(order, price)
+    }
+
+    /// Get the price precision used by the contract
+    public fun price_precision(): u64 {
+        executor::price_precision()
     }
 }
