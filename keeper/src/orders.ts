@@ -37,9 +37,11 @@ export function getClient(): SuiClient {
 async function fetchOrderCreatedEvents(): Promise<string[]> {
   const client = getClient();
 
+  // Use original package ID for events - events are tied to the package
+  // that defined the types, not upgraded versions
   const events = await client.queryEvents({
     query: {
-      MoveEventType: `${config.packageId}::order_registry::OrderCreated`,
+      MoveEventType: `${config.originalPackageId}::order_registry::OrderCreated`,
     },
     limit: 100,
   });

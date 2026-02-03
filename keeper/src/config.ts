@@ -34,6 +34,8 @@ export const config = {
 
   // Contract addresses
   packageId: requireEnv('PACKAGE_ID'),
+  // Original package ID for event queries (events are tied to original type definitions)
+  originalPackageId: optionalEnv('ORIGINAL_PACKAGE_ID', requireEnv('PACKAGE_ID')),
   orderRegistryId: requireEnv('ORDER_REGISTRY_ID'),
   vaultId: requireEnv('VAULT_ID'),
   executorCapId: requireEnv('EXECUTOR_CAP_ID'),
