@@ -122,6 +122,7 @@ export function OrdersList() {
       setCancellingId(orderId);
 
       const tx = new Transaction();
+      tx.setGasBudget(50000000); // 0.05 SUI max gas
 
       tx.moveCall({
         target: `${CONTRACT.PACKAGE_ID}::entry::cancel_order`,
