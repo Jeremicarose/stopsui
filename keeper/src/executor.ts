@@ -5,12 +5,15 @@
  * Uses Sui's Programmable Transaction Blocks (PTB) to call
  * the entry::execute_order function.
  *
- * DeepBook Integration:
+ * DeepBook v3 Integration (Balance Manager Pattern):
+ * - Keeper has a pre-created Balance Manager (trading account on DeepBook)
  * - When swaps are enabled, builds a PTB that:
- *   1. Calls execute_order_for_swap to get SUI
- *   2. Calls deepbook::pool::swap_exact_base_for_quote
- *   3. Calls complete_swap_execution to finalize
- * - Keeper pays DEEP token fees for swaps
+ *   1. Calls execute_order_for_swap to get SUI coin
+ *   2. Deposits SUI into Balance Manager
+ *   3. Places market sell order on DeepBook pool
+ *   4. Withdraws USDC from Balance Manager
+ *   5. Calls complete_swap_execution to transfer USDC to user
+ * - Keeper should have DEEP deposited in Balance Manager for fee discounts
  */
 
 import { SuiClient } from '@mysten/sui/client';

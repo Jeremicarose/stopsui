@@ -63,8 +63,11 @@ export const config = {
     ),
     // SUI/USDC pool object ID (must be configured per network)
     suiUsdcPoolId: optionalEnvOrUndefined('SUI_USDC_POOL_ID'),
-    // Keeper's DEEP coin object ID for paying swap fees
-    deepCoinId: optionalEnvOrUndefined('DEEP_COIN_ID'),
+    // Keeper's Balance Manager object ID (created once, used for all swaps)
+    // This is a shared object that acts as the keeper's trading account on DeepBook
+    balanceManagerId: optionalEnvOrUndefined('BALANCE_MANAGER_ID'),
+    // Keeper's trade cap for the balance manager (authorizes trading)
+    tradeCapId: optionalEnvOrUndefined('TRADE_CAP_ID'),
     // DEEP token type (testnet vs mainnet)
     deepTokenType: optionalEnv(
       'DEEP_TOKEN_TYPE',
@@ -103,7 +106,8 @@ export function logConfig() {
   if (config.deepbook.swapEnabled) {
     console.log(`DeepBook Package: ${config.deepbook.packageId}`);
     console.log(`SUI/USDC Pool: ${config.deepbook.suiUsdcPoolId || 'NOT SET'}`);
-    console.log(`DEEP Coin: ${config.deepbook.deepCoinId || 'NOT SET'}`);
+    console.log(`Balance Manager: ${config.deepbook.balanceManagerId || 'NOT SET'}`);
+    console.log(`Trade Cap: ${config.deepbook.tradeCapId || 'NOT SET'}`);
     console.log(`Slippage: ${config.deepbook.slippageBps} bps`);
   }
   console.log('============================');
@@ -117,8 +121,11 @@ export function validateDeepBookConfig(): { valid: boolean; errors: string[] } {
     if (!config.deepbook.suiUsdcPoolId) {
       errors.push('SUI_USDC_POOL_ID is required when swaps are enabled');
     }
-    if (!config.deepbook.deepCoinId) {
-      errors.push('DEEP_COIN_ID is required when swaps are enabled');
+    if (!config.deepbook.balanceManagerId) {
+      errors.push('BALANCE_MANAGER_ID is required when swaps are enabled');
+    }
+    if (!config.deepbook.tradeCapId) {
+      errors.push('TRADE_CAP_ID is required when swaps are enabled');
     }
   }
 
