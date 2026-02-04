@@ -120,6 +120,9 @@ export async function executeOrderSimple(
 
 /**
  * Calculate minimum USDC output with slippage protection
+ *
+ * Note: On testnet, pools have thin liquidity so we add extra buffer.
+ * The actual slippage should be configured via SLIPPAGE_BPS in .env
  */
 function calculateMinQuoteOut(suiAmount: bigint, currentPrice: bigint): bigint {
   // Expected USDC = (SUI amount * price) / PRICE_PRECISION
@@ -130,7 +133,11 @@ function calculateMinQuoteOut(suiAmount: bigint, currentPrice: bigint): bigint {
 
   // Apply slippage tolerance
   const slippageMultiplier = 10000n - BigInt(config.deepbook.slippageBps);
-  const minQuoteOut = (expectedUsdc * slippageMultiplier) / 10000n;
+  let minQuoteOut = (expectedUsdc * slippageMultiplier) / 10000n;
+
+  // Extra safety buffer for testnet thin liquidity (additional 2%)
+  // This helps avoid validate_inputs failures due to order book depth
+  minQuoteOut = (minQuoteOut * 98n) / 100n;
 
   return minQuoteOut;
 }
