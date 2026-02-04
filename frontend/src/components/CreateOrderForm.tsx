@@ -23,6 +23,17 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
   const client = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const { priceData } = usePrice();
+  const { balance, refetch: refetchBalance } = useBalance();
+
+  // Reserve some SUI for gas (0.1 SUI)
+  const GAS_RESERVE = 0.1;
+  const maxAmount = balance ? Math.max(0, balance.totalSui - GAS_RESERVE) : 0;
+
+  const handleMaxClick = () => {
+    if (maxAmount > 0) {
+      setAmount(maxAmount.toFixed(4));
+    }
+  };
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,6 +101,7 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
       setSuccess(`Order created! Digest: ${result.digest.slice(0, 12)}...`);
       setAmount('');
       setTriggerPrice('');
+      refetchBalance(); // Update balance after order
       onSuccess?.();
     } catch (err) {
       console.error('Failed to create order:', err);
@@ -149,9 +161,25 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
 
         {/* Amount Input */}
         <div className="mb-4">
-          <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-            Amount (SUI)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              Amount (SUI)
+            </label>
+            {balance && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)]">
+                  Balance: <span className="font-mono">{balance.formatted}</span> SUI
+                </span>
+                <button
+                  type="button"
+                  onClick={handleMaxClick}
+                  className="text-xs px-2 py-0.5 rounded bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-medium transition-colors"
+                >
+                  MAX
+                </button>
+              </div>
+            )}
+          </div>
           <div className="relative">
             <input
               type="number"
@@ -160,12 +188,18 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
               placeholder="0.00"
               step="0.01"
               min="0"
+              max={maxAmount > 0 ? maxAmount : undefined}
               className={inputClass}
             />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] text-sm font-medium">
               SUI
             </span>
           </div>
+          {amount && parseFloat(amount) > maxAmount && maxAmount > 0 && (
+            <p className="mt-1 text-xs text-[var(--stop-loss)]">
+              Amount exceeds available balance (after gas reserve)
+            </p>
+          )}
         </div>
 
         {/* Trigger Price Input */}
