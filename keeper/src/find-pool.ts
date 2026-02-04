@@ -26,7 +26,8 @@ const DEEPBOOK_MAINNET = {
 const TOKENS = {
   testnet: {
     SUI: '0x2::sui::SUI',
-    USDC: '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC',
+    // Testnet uses DBUSDC (DeepBook USDC), not regular USDC
+    USDC: '0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC',
     DEEP: '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP',
   },
   mainnet: {
@@ -121,21 +122,25 @@ async function main() {
   console.log('2. DeepBook Discord/Telegram for testnet pool IDs');
   console.log('3. Query the DeepBook indexer API');
 
-  // Method 3: Known pool IDs (from documentation)
-  console.log('\n--- Known Pool IDs (from DeepBook docs) ---');
+  // Method 3: Known pool IDs (from DeepBook indexer)
+  console.log('\n--- Known Pool IDs ---');
   if (isTestnet) {
-    console.log('Testnet pools may vary. Check DeepBook testnet faucet/docs.');
+    console.log('Testnet SUI_DBUSDC: 0x1c19362ca52b8ffd7a33cee805a67d40f31e6ba303753fd3a4cfdfacea7163a5');
+    console.log('Testnet DEEP_SUI: 0x48c95963e9eac37a316b7ae04a0deb761bcdcc2b67912374d6036e7f0e9bae9f');
+    console.log('Testnet DEEP_DBUSDC: 0xe86b991f8632217505fd859445f9803967ac84a9d4a1219065bf191fcb74b622');
+    console.log('\nNote: Testnet uses DBUSDC (DeepBook USDC), not regular USDC!');
   } else {
+    console.log('Mainnet SUI_USDC: 0xe05dafb5133bcffb8d59f4e12465dc0e9faeaa05e3e342a08fe135800e3e4407');
     console.log('Mainnet DEEP_SUI: 0xb663828d6217467c8a1838a03793da896cbe745b150ebd57d82f814ca579fc22');
     console.log('Mainnet DEEP_USDC: 0xf948981b806057580f91622417534f491da5f61aeaf33d0ed8e69fd5691c95ce');
   }
 
   console.log('\n--- DeepBook Indexer Query ---');
   const indexerUrl = isTestnet
-    ? 'https://deepbook-indexer.testnet.sui.io'
-    : 'https://deepbook-indexer.mainnet.sui.io';
+    ? 'https://deepbook-indexer.testnet.mystenlabs.com'
+    : 'https://deepbook-indexer.mainnet.mystenlabs.com';
   console.log(`Indexer URL: ${indexerUrl}`);
-  console.log('Try: curl ${indexerUrl}/pools');
+  console.log(`Try: curl "${indexerUrl}/get_pools"`);
 }
 
 main().catch(console.error);

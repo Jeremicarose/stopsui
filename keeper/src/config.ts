@@ -73,10 +73,12 @@ export const config = {
       'DEEP_TOKEN_TYPE',
       '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP' // testnet
     ),
-    // USDC token type (testnet vs mainnet)
+    // USDC/DBUSDC token type (testnet uses DBUSDC - DeepBook USDC)
+    // Testnet: DBUSDC (0xf7152c...::DBUSDC::DBUSDC)
+    // Mainnet: USDC (0xdba346...::usdc::USDC)
     usdcTokenType: optionalEnv(
       'USDC_TOKEN_TYPE',
-      '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC' // testnet
+      '0xf7152c05930480cd740d7311b5b8b45c6f488e3a53a11c3f74a6fac36a52e0d7::DBUSDC::DBUSDC' // testnet DBUSDC
     ),
     // Slippage tolerance in basis points (100 = 1%)
     slippageBps: parseInt(optionalEnv('SLIPPAGE_BPS', '50')), // 0.5% default
