@@ -170,9 +170,25 @@ export function ScalingOrders({ onSuccess }: { onSuccess?: () => void }) {
 
         {/* Total Amount */}
         <div className="mb-6">
-          <label className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
-            Total Amount (SUI)
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label className="text-sm font-medium text-[var(--text-secondary)]">
+              Total Amount (SUI)
+            </label>
+            {balance && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)]">
+                  Balance: <span className="font-mono">{balance.formatted}</span> SUI
+                </span>
+                <button
+                  type="button"
+                  onClick={handleMaxClick}
+                  className="text-xs px-2 py-0.5 rounded bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-medium transition-colors"
+                >
+                  MAX
+                </button>
+              </div>
+            )}
+          </div>
           <input
             type="number"
             value={totalAmount}
@@ -180,8 +196,14 @@ export function ScalingOrders({ onSuccess }: { onSuccess?: () => void }) {
             placeholder="1.00"
             step="0.01"
             min="0"
+            max={maxAmount > 0 ? maxAmount : undefined}
             className={isStopLoss ? '' : 'take-profit'}
           />
+          {totalAmount && parseFloat(totalAmount) > maxAmount && maxAmount > 0 && (
+            <p className="mt-1 text-xs text-[var(--stop-loss)]">
+              Amount exceeds available balance (after gas reserve)
+            </p>
+          )}
         </div>
 
         {/* Levels */}
