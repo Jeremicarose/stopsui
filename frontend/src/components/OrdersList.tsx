@@ -185,6 +185,8 @@ function OrderCard({
   );
 }
 
+const ORDERS_PER_PAGE = 3; // Show 3 orders at a time
+
 export function OrdersList() {
   const { pendingOrders, historyOrders, isLoading, refetch } = useOrders();
   const { priceData } = usePrice();
@@ -194,6 +196,14 @@ export function OrdersList() {
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+  const [historyPage, setHistoryPage] = useState(1);
+  const [pendingPage, setPendingPage] = useState(1);
+
+  // Paginated orders
+  const paginatedHistory = historyOrders.slice(0, historyPage * ORDERS_PER_PAGE);
+  const paginatedPending = pendingOrders.slice(0, pendingPage * ORDERS_PER_PAGE);
+  const hasMoreHistory = historyOrders.length > paginatedHistory.length;
+  const hasMorePending = pendingOrders.length > paginatedPending.length;
 
   const handleCancel = useCallback(async (orderId: string) => {
     if (!account) return;
@@ -281,7 +291,7 @@ export function OrdersList() {
           </div>
         ) : (
           <div className="space-y-3">
-            {pendingOrders.map(order => (
+            {paginatedPending.map(order => (
               <OrderCard
                 key={order.id}
                 order={order}
@@ -290,6 +300,27 @@ export function OrdersList() {
                 isCancelling={cancellingId === order.id}
               />
             ))}
+            {/* Pagination controls for pending */}
+            {(hasMorePending || pendingPage > 1) && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                {pendingPage > 1 && (
+                  <button
+                    onClick={() => setPendingPage(1)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+                  >
+                    Show Less
+                  </button>
+                )}
+                {hasMorePending && (
+                  <button
+                    onClick={() => setPendingPage(p => p + 1)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+                  >
+                    Show More ({pendingOrders.length - paginatedPending.length} more)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )
       ) : (
@@ -303,7 +334,7 @@ export function OrdersList() {
           </div>
         ) : (
           <div className="space-y-3">
-            {historyOrders.map(order => (
+            {paginatedHistory.map(order => (
               <OrderCard
                 key={order.id}
                 order={order}
@@ -312,6 +343,27 @@ export function OrdersList() {
                 isCancelling={false}
               />
             ))}
+            {/* Pagination controls for history */}
+            {(hasMoreHistory || historyPage > 1) && (
+              <div className="flex items-center justify-center gap-3 pt-2">
+                {historyPage > 1 && (
+                  <button
+                    onClick={() => setHistoryPage(1)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+                  >
+                    Show Less
+                  </button>
+                )}
+                {hasMoreHistory && (
+                  <button
+                    onClick={() => setHistoryPage(p => p + 1)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-primary)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] transition-colors"
+                  >
+                    Show More ({historyOrders.length - paginatedHistory.length} more)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )
       )}
