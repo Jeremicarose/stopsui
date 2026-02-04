@@ -125,6 +125,7 @@ export function ScalingOrders({ onSuccess }: { onSuccess?: () => void }) {
 
       setSuccess(`Created ${levels.length} scaling orders! Digest: ${result.digest.slice(0, 12)}...`);
       setTotalAmount('');
+      refetchBalance(); // Update balance after orders
       onSuccess?.();
     } catch (err) {
       console.error('Failed to create scaling orders:', err);
