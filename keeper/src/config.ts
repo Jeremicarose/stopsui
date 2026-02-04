@@ -54,12 +54,13 @@ export const config = {
   ),
 
   // DeepBook v3 Configuration (for SUI→USDC swaps)
-  // Testnet package: 0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4
-  // Mainnet package: 0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809
+  // Package IDs from @mysten/deepbook-v3 SDK constants
+  // Testnet: 0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c
+  // Mainnet: 0x337f4f4f6567fcd778d5454f27c16c70e2f274cc6377ea6249ddf491482ef497
   deepbook: {
     packageId: optionalEnv(
       'DEEPBOOK_PACKAGE_ID',
-      '0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4' // testnet default
+      '0x22be4cade64bf2d02412c7e8d0e8beea2f78828b948118d46735315409371a3c' // testnet default
     ),
     // SUI/USDC pool object ID (must be configured per network)
     suiUsdcPoolId: optionalEnvOrUndefined('SUI_USDC_POOL_ID'),
