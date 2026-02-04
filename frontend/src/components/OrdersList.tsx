@@ -5,6 +5,7 @@ import { useSignAndExecuteTransaction, useSuiClient, useCurrentAccount } from '@
 import { Transaction } from '@mysten/sui/transactions';
 import { useOrders, type FormattedOrder } from '@/hooks/useOrders';
 import { usePrice } from '@/hooks/usePrice';
+import { useBalance } from '@/hooks/useBalance';
 import { CONTRACT, ORDER_STATUS, ORDER_DIRECTION } from '@/lib/constants';
 
 function OrderCard({
@@ -21,6 +22,7 @@ function OrderCard({
   const isStopLoss = order.direction === ORDER_DIRECTION.STOP_LOSS;
   const isPending = order.status === ORDER_STATUS.PENDING;
   const isExecuted = order.status === ORDER_STATUS.EXECUTED;
+  const isCancelled = order.status === ORDER_STATUS.CANCELLED;
 
   // Calculate distance from trigger
   const distance = currentPrice
@@ -32,6 +34,12 @@ function OrderCard({
     : isExecuted
       ? 'order-card executed'
       : 'order-card cancelled';
+
+  // Calculate USD value at different prices
+  const valueAtTrigger = order.amountSui * order.triggerPriceUsd;
+  const valueAtExecution = order.executionPriceUsd
+    ? order.amountSui * order.executionPriceUsd
+    : null;
 
   return (
     <div className={cardClass}>
@@ -66,13 +74,81 @@ function OrderCard({
           </div>
         </div>
         <div>
-          <div className="text-xs text-[var(--text-muted)] mb-1">Trigger Price</div>
+          <div className="text-xs text-[var(--text-muted)] mb-1">
+            {isExecuted ? 'Trigger Price' : 'Trigger Price'}
+          </div>
           <div className="font-mono font-semibold">
             ${order.triggerPriceUsd.toFixed(4)}
           </div>
         </div>
       </div>
 
+      {/* Execution details for executed orders */}
+      {isExecuted && (
+        <div className="mt-3 pt-3 border-t border-[var(--border-subtle)]">
+          <div className="grid grid-cols-2 gap-4 mb-3">
+            <div>
+              <div className="text-xs text-[var(--text-muted)] mb-1">Execution Price</div>
+              <div className="font-mono font-semibold text-[var(--take-profit)]">
+                ${order.executionPriceUsd?.toFixed(4) || 'N/A'}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-[var(--text-muted)] mb-1">Value at Execution</div>
+              <div className="font-mono font-semibold">
+                ${valueAtExecution?.toFixed(2) || 'N/A'}
+              </div>
+            </div>
+          </div>
+
+          {/* Outcome explanation */}
+          <div className="p-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
+            <div className="flex items-start gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 text-[var(--take-profit)] flex-shrink-0">
+                <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+              </svg>
+              <div className="text-xs text-[var(--text-secondary)]">
+                <p className="font-semibold mb-1">Order Executed Successfully</p>
+                <p className="text-[var(--text-muted)]">
+                  {isStopLoss
+                    ? `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price dropped to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. This protected you from further losses.`
+                    : `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price rose to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. Profits locked in!`
+                  }
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {order.executedAtFormatted && (
+            <div className="mt-2 text-xs text-[var(--text-muted)]">
+              Executed: {order.executedAtFormatted}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Cancelled order info */}
+      {isCancelled && (
+        <div className="mt-3 pt-3 border-t border-[var(--border-subtle)]">
+          <div className="p-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
+            <div className="flex items-start gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="mt-0.5 text-[var(--text-muted)] flex-shrink-0">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
+              <div className="text-xs text-[var(--text-secondary)]">
+                <p className="font-semibold mb-1">Order Cancelled</p>
+                <p className="text-[var(--text-muted)]">
+                  Your {order.amountSui.toFixed(4)} SUI was returned to your wallet.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending order progress */}
       {isPending && distance !== null && (
         <div className="mt-3 pt-3 border-t border-[var(--border-subtle)]">
           <div className="flex items-center justify-between text-xs">
@@ -96,6 +172,9 @@ function OrderCard({
               }}
             />
           </div>
+          <div className="mt-2 text-xs text-[var(--text-muted)]">
+            Est. value at trigger: <span className="font-mono">${valueAtTrigger.toFixed(2)}</span>
+          </div>
         </div>
       )}
 
@@ -109,6 +188,7 @@ function OrderCard({
 export function OrdersList() {
   const { pendingOrders, historyOrders, isLoading, refetch } = useOrders();
   const { priceData } = usePrice();
+  const { refetch: refetchBalance } = useBalance();
   const account = useCurrentAccount();
   const client = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
