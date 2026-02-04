@@ -42,7 +42,7 @@ module stopsui::entry {
 
         // Share the order object so keeper can execute it
         // Owner is stored in the order and verified for cancellation
-        transfer::share_object(order);
+        order_registry::share_order(order);
     }
 
     /// Create a take-profit order and deposit SUI in one transaction
@@ -75,7 +75,7 @@ module stopsui::entry {
 
         // Share the order object so keeper can execute it
         // Owner is stored in the order and verified for cancellation
-        transfer::share_object(order);
+        order_registry::share_order(order);
     }
 
     /// Cancel an order and withdraw deposited SUI

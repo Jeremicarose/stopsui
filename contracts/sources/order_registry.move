@@ -221,6 +221,14 @@ module stopsui::order_registry {
         (registry.total_orders, registry.active_orders)
     }
 
+    // ============ Public Sharing ============
+
+    /// Share an order object so keeper can execute it
+    /// Must be called from this module due to Sui's transfer rules
+    public fun share_order(order: StopOrder) {
+        transfer::share_object(order)
+    }
+
     // ============ Test Helpers ============
 
     #[test_only]
