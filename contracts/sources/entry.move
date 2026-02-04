@@ -40,8 +40,9 @@ module stopsui::entry {
         let order_id = order_registry::order_id(&order);
         vault::deposit(vault, order_id, sui_coin, ctx);
 
-        // Transfer order object to user
-        transfer::public_transfer(order, ctx.sender());
+        // Share the order object so keeper can execute it
+        // Owner is stored in the order and verified for cancellation
+        transfer::share_object(order);
     }
 
     /// Create a take-profit order and deposit SUI in one transaction
@@ -72,8 +73,9 @@ module stopsui::entry {
         let order_id = order_registry::order_id(&order);
         vault::deposit(vault, order_id, sui_coin, ctx);
 
-        // Transfer order object to user
-        transfer::public_transfer(order, ctx.sender());
+        // Share the order object so keeper can execute it
+        // Owner is stored in the order and verified for cancellation
+        transfer::share_object(order);
     }
 
     /// Cancel an order and withdraw deposited SUI
