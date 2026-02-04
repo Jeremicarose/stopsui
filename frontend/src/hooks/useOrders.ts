@@ -29,7 +29,7 @@ export interface FormattedOrder extends Order {
 }
 
 function formatOrder(order: Order): FormattedOrder {
-  return {
+  const formatted: FormattedOrder = {
     ...order,
     amountSui: Number(order.baseAmount) / Number(MIST_PER_SUI),
     triggerPriceUsd: Number(order.triggerPrice) / Number(PRICE_PRECISION),
@@ -40,6 +40,16 @@ function formatOrder(order: Order): FormattedOrder {
         : 'Cancelled',
     typeLabel: order.direction === ORDER_DIRECTION.STOP_LOSS ? 'Stop-Loss' : 'Take-Profit',
   };
+
+  // Add execution details if available
+  if (order.executionPrice) {
+    formatted.executionPriceUsd = Number(order.executionPrice) / Number(PRICE_PRECISION);
+  }
+  if (order.executedAt) {
+    formatted.executedAtFormatted = new Date(order.executedAt).toLocaleString();
+  }
+
+  return formatted;
 }
 
 export function useOrders() {
@@ -60,17 +70,35 @@ export function useOrders() {
       setIsLoading(true);
 
       // Query OrderCreated events for this user
-      const events = await client.queryEvents({
+      const createdEvents = await client.queryEvents({
         query: {
           MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderCreated`,
         },
         limit: 50,
       });
 
+      // Also fetch execution events to get execution details
+      const executedEvents = await client.queryEvents({
+        query: {
+          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderExecuted`,
+        },
+        limit: 50,
+      });
+
+      // Build a map of execution details by order ID
+      const executionMap = new Map<string, { executionPrice: bigint; executedAt: number }>();
+      for (const event of executedEvents.data) {
+        const parsed = event.parsedJson as { order_id: string; execution_price: string };
+        executionMap.set(parsed.order_id, {
+          executionPrice: BigInt(parsed.execution_price),
+          executedAt: Number(event.timestampMs),
+        });
+      }
+
       // Filter for user's orders and fetch their current state
       const userOrderIds: string[] = [];
 
-      for (const event of events.data) {
+      for (const event of createdEvents.data) {
         const parsed = event.parsedJson as { order_id: string; owner: string };
         if (parsed.owner === account.address) {
           userOrderIds.push(parsed.order_id);
@@ -87,6 +115,7 @@ export function useOrders() {
 
           if (obj.data?.content && obj.data.content.dataType === 'moveObject') {
             const fields = obj.data.content.fields as Record<string, unknown>;
+            const execution = executionMap.get(orderId);
 
             return {
               id: orderId,
@@ -96,6 +125,9 @@ export function useOrders() {
               direction: fields.direction as OrderDirection,
               status: fields.status as OrderStatus,
               createdAt: parseInt(fields.created_at as string),
+              // Add execution details if available
+              executionPrice: execution?.executionPrice,
+              executedAt: execution?.executedAt,
             } as Order;
           }
           return null;
