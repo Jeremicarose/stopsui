@@ -78,29 +78,27 @@ export function useOrders() {
     try {
       setIsLoading(true);
 
-      // Query OrderCreated events for this user
-      const createdEvents = await client.queryEvents({
-        query: {
-          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderCreated`,
-        },
-        limit: 50,
-      });
-
-      // Also fetch execution events to get execution details
-      const executedEvents = await client.queryEvents({
-        query: {
-          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderExecuted`,
-        },
-        limit: 50,
-      });
-
-      // Fetch swap execution events (DeepBook integration)
-      const swapEvents = await client.queryEvents({
-        query: {
-          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::executor::OrderExecutedWithSwapEvent`,
-        },
-        limit: 50,
-      });
+      // Query all events in parallel for faster loading
+      const [createdEvents, executedEvents, swapEvents] = await Promise.all([
+        client.queryEvents({
+          query: {
+            MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderCreated`,
+          },
+          limit: 50,
+        }),
+        client.queryEvents({
+          query: {
+            MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::order_registry::OrderExecuted`,
+          },
+          limit: 50,
+        }),
+        client.queryEvents({
+          query: {
+            MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::executor::OrderExecutedWithSwapEvent`,
+          },
+          limit: 50,
+        }),
+      ]);
 
       // Build a map of execution details by order ID
       const executionMap = new Map<string, {
@@ -134,7 +132,7 @@ export function useOrders() {
         });
       }
 
-      // Filter for user's orders and fetch their current state
+      // Filter for user's orders
       const userOrderIds: string[] = [];
 
       for (const event of createdEvents.data) {
@@ -144,14 +142,24 @@ export function useOrders() {
         }
       }
 
-      // Fetch order objects
-      const orderPromises = userOrderIds.map(async (orderId) => {
-        try {
-          const obj = await client.getObject({
-            id: orderId,
-            options: { showContent: true },
-          });
+      // Skip if no orders
+      if (userOrderIds.length === 0) {
+        setOrders([]);
+        setError(null);
+        setIsLoading(false);
+        return;
+      }
 
+      // Batch fetch all order objects in a single RPC call
+      const objectResults = await client.multiGetObjects({
+        ids: userOrderIds,
+        options: { showContent: true },
+      });
+
+      // Parse the results
+      const fetchedOrders = objectResults.map((obj, index) => {
+        try {
+          const orderId = userOrderIds[index];
           if (obj.data?.content && obj.data.content.dataType === 'moveObject') {
             const fields = obj.data.content.fields as Record<string, unknown>;
             const execution = executionMap.get(orderId);
@@ -164,10 +172,8 @@ export function useOrders() {
               direction: fields.direction as OrderDirection,
               status: fields.status as OrderStatus,
               createdAt: parseInt(fields.created_at as string),
-              // Add execution details if available
               executionPrice: execution?.executionPrice,
               executedAt: execution?.executedAt,
-              // Add swap details if available
               usdcReceived: execution?.usdcReceived,
               wasSwapped: execution?.wasSwapped,
             } as Order;
@@ -177,8 +183,6 @@ export function useOrders() {
           return null;
         }
       });
-
-      const fetchedOrders = await Promise.all(orderPromises);
       const validOrders = fetchedOrders
         .filter((o): o is Order => o !== null)
         .map(formatOrder)
@@ -195,7 +199,8 @@ export function useOrders() {
 
   useEffect(() => {
     fetchOrders();
-    const interval = setInterval(fetchOrders, 10000);
+    // Poll every 15s (reduced from 10s to ease RPC load)
+    const interval = setInterval(fetchOrders, 15000);
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
