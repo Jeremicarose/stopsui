@@ -37,6 +37,17 @@ export function ScalingOrders({ onSuccess }: { onSuccess?: () => void }) {
   const client = useSuiClient();
   const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
   const { priceData } = usePrice();
+  const { balance, refetch: refetchBalance } = useBalance();
+
+  // Reserve some SUI for gas (0.1 SUI)
+  const GAS_RESERVE = 0.1;
+  const maxAmount = balance ? Math.max(0, balance.totalSui - GAS_RESERVE) : 0;
+
+  const handleMaxClick = () => {
+    if (maxAmount > 0) {
+      setTotalAmount(maxAmount.toFixed(4));
+    }
+  };
 
   const updateLevel = (id: number, field: 'percentage' | 'priceOffset', value: number) => {
     setLevels(prev => prev.map(l =>
