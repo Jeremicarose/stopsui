@@ -5,6 +5,7 @@ import { useSignAndExecuteTransaction, useSuiClient, useCurrentAccount } from '@
 import { Transaction } from '@mysten/sui/transactions';
 import { CONTRACT, MIST_PER_SUI, PRICE_PRECISION, ORDER_DIRECTION } from '@/lib/constants';
 import { usePrice } from '@/hooks/usePrice';
+import { useBalance } from '@/hooks/useBalance';
 
 interface CreateOrderFormProps {
   onSuccess?: () => void;
