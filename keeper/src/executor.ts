@@ -209,12 +209,23 @@ export async function executeOrderWithSwap(
       ],
     });
 
-    // Step 3: Place market sell order (SUI → USDC)
+    // Step 3a: Generate TradeProof from TradeCap
+    // The TradeProof is required for place_market_order (not TradeCap directly)
+    const tradeProof = tx.moveCall({
+      target: `${config.deepbook.packageId}::balance_manager::generate_proof_as_trader`,
+      arguments: [
+        tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
+        tx.object(tradeCapId!),        // trade_cap: &TradeCap
+      ],
+    });
+
+    // Step 3b: Place market sell order (SUI → USDC)
     // place_market_order<BaseAsset, QuoteAsset>(
     //   pool: &mut Pool<BaseAsset, QuoteAsset>,
     //   balance_manager: &mut BalanceManager,
-    //   trade_cap: &TradeCap,
+    //   trade_proof: TradeProof,
     //   client_order_id: u64,
+    //   self_matching_option: u8,  // 0 = SELF_MATCHING_ALLOWED
     //   quantity: u64,
     //   is_bid: bool,  // false = sell base (SUI) for quote (USDC)
     //   pay_with_deep: bool,
@@ -229,8 +240,9 @@ export async function executeOrderWithSwap(
       arguments: [
         tx.object(suiUsdcPoolId!),     // pool: &mut Pool<SUI, USDC>
         tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-        tx.object(tradeCapId!),        // trade_cap: &TradeCap
+        tradeProof,                    // trade_proof: TradeProof
         tx.pure.u64(Date.now()),       // client_order_id: u64 (unique ID)
+        tx.pure.u8(0),                 // self_matching_option: 0 = allowed
         suiSold,                        // quantity: u64 (amount of SUI to sell)
         tx.pure.bool(false),           // is_bid: false = sell base for quote
         tx.pure.bool(true),            // pay_with_deep: true (use DEEP for fees if available)
