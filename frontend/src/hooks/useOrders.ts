@@ -13,6 +13,9 @@ export interface Order {
   direction: OrderDirection;
   status: OrderStatus;
   createdAt: number;
+  // Execution details (populated for executed orders)
+  executionPrice?: bigint;
+  executedAt?: number;
 }
 
 export interface FormattedOrder extends Order {
@@ -20,6 +23,9 @@ export interface FormattedOrder extends Order {
   triggerPriceUsd: number;
   statusLabel: string;
   typeLabel: string;
+  // Formatted execution details
+  executionPriceUsd?: number;
+  executedAtFormatted?: string;
 }
 
 function formatOrder(order: Order): FormattedOrder {
