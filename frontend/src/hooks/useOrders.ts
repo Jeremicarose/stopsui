@@ -16,6 +16,9 @@ export interface Order {
   // Execution details (populated for executed orders)
   executionPrice?: bigint;
   executedAt?: number;
+  // DeepBook swap details (populated for orders executed with swap)
+  usdcReceived?: bigint;
+  wasSwapped?: boolean;
 }
 
 export interface FormattedOrder extends Order {
@@ -26,6 +29,8 @@ export interface FormattedOrder extends Order {
   // Formatted execution details
   executionPriceUsd?: number;
   executedAtFormatted?: string;
+  // Formatted swap details
+  usdcReceivedFormatted?: number;
 }
 
 function formatOrder(order: Order): FormattedOrder {
@@ -47,6 +52,10 @@ function formatOrder(order: Order): FormattedOrder {
   }
   if (order.executedAt) {
     formatted.executedAtFormatted = new Date(order.executedAt).toLocaleString();
+  }
+  // Add swap details if available (USDC has 6 decimals)
+  if (order.usdcReceived) {
+    formatted.usdcReceivedFormatted = Number(order.usdcReceived) / 1_000_000;
   }
 
   return formatted;
