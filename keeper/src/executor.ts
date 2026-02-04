@@ -145,17 +145,13 @@ function calculateMinQuoteOut(suiAmount: bigint, currentPrice: bigint): bigint {
 /**
  * Execute a triggered order with DeepBook swap (SUI → USDC)
  *
- * Uses the Balance Manager pattern:
+ * Uses the simpler swap_exact_base_for_quote function:
  * 1. Execute order and get SUI coin from vault
- * 2. Deposit SUI into keeper's Balance Manager
- * 3. Place market sell order on DeepBook (SUI → USDC)
- * 4. Withdraw USDC from Balance Manager
- * 5. Transfer USDC to user via complete_swap_execution
+ * 2. Create zero DEEP coin for fees
+ * 3. Call swap_exact_base_for_quote (handles lot sizes automatically)
+ * 4. Transfer USDC to user, return leftover SUI to keeper
  *
- * Prerequisites:
- * - Keeper must have a Balance Manager created (BALANCE_MANAGER_ID)
- * - Keeper must have a Trade Cap for the Balance Manager (TRADE_CAP_ID)
- * - Keeper should deposit DEEP tokens in Balance Manager for fee discounts
+ * This approach is simpler than Balance Manager and handles lot size alignment.
  */
 export async function executeOrderWithSwap(
   order: StopOrder,
@@ -164,22 +160,19 @@ export async function executeOrderWithSwap(
   const client = getClient();
   const kp = getKeypair();
 
-  // Validate DeepBook config
-  const validation = validateDeepBookConfig();
-  if (!validation.valid) {
-    return {
-      success: false,
-      error: `DeepBook config invalid: ${validation.errors.join(', ')}`,
-    };
-  }
-
   const {
     suiUsdcPoolId,
-    balanceManagerId,
-    tradeCapId,
     deepTokenType,
     usdcTokenType,
   } = config.deepbook;
+
+  // Basic validation
+  if (!suiUsdcPoolId || !usdcTokenType || !deepTokenType) {
+    return {
+      success: false,
+      error: 'DeepBook pool or token types not configured',
+    };
+  }
 
   try {
     // Calculate minimum USDC output with slippage protection
@@ -188,7 +181,7 @@ export async function executeOrderWithSwap(
 
     console.log(`  Swap details: ${suiAmount} MIST → min ${minQuoteOut} USDC (slippage: ${config.deepbook.slippageBps}bps)`);
 
-    // Build PTB for swap execution using Balance Manager pattern
+    // Build PTB for swap execution using swap_exact_base_for_quote
     const tx = new Transaction();
 
     // Step 1: Execute order and get SUI coin from vault
@@ -205,76 +198,37 @@ export async function executeOrderWithSwap(
       ],
     });
 
-    // Step 2: Deposit SUI into Balance Manager
-    // deposit<T>(balance_manager: &mut BalanceManager, coin: Coin<T>)
-    tx.moveCall({
-      target: `${config.deepbook.packageId}::balance_manager::deposit`,
-      typeArguments: ['0x2::sui::SUI'],
-      arguments: [
-        tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-        suiCoin,                        // coin: Coin<SUI>
-      ],
+    // Step 2: Create a zero DEEP coin for fees
+    // We use coin::zero to create an empty DEEP coin
+    const zeroDeepCoin = tx.moveCall({
+      target: '0x2::coin::zero',
+      typeArguments: [deepTokenType],
+      arguments: [],
     });
 
-    // Step 3a: Generate TradeProof from TradeCap
-    // The TradeProof is required for place_market_order (not TradeCap directly)
-    const tradeProof = tx.moveCall({
-      target: `${config.deepbook.packageId}::balance_manager::generate_proof_as_trader`,
-      arguments: [
-        tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-        tx.object(tradeCapId!),        // trade_cap: &TradeCap
-      ],
-    });
-
-    // Step 3b: Place market sell order (SUI → USDC)
-    // place_market_order<BaseAsset, QuoteAsset>(
-    //   pool: &mut Pool<BaseAsset, QuoteAsset>,
-    //   balance_manager: &mut BalanceManager,
-    //   trade_proof: TradeProof,
-    //   client_order_id: u64,
-    //   self_matching_option: u8,  // 0 = SELF_MATCHING_ALLOWED
-    //   quantity: u64,
-    //   is_bid: bool,  // false = sell base (SUI) for quote (USDC)
-    //   pay_with_deep: bool,
-    //   clock: &Clock,
-    // )
-    tx.moveCall({
-      target: `${config.deepbook.packageId}::pool::place_market_order`,
+    // Step 3: Swap SUI for USDC using swap_exact_base_for_quote
+    // This function handles lot sizes automatically and returns leftover
+    // Returns: (Coin<BaseAsset>, Coin<QuoteAsset>, Coin<DEEP>) = (leftover_sui, usdc_out, leftover_deep)
+    const [remainingSui, usdcCoin, remainingDeep] = tx.moveCall({
+      target: `${config.deepbook.packageId}::pool::swap_exact_base_for_quote`,
       typeArguments: [
         '0x2::sui::SUI',  // BaseAsset = SUI
-        usdcTokenType!,   // QuoteAsset = USDC
+        usdcTokenType,    // QuoteAsset = USDC
       ],
       arguments: [
-        tx.object(suiUsdcPoolId!),     // pool: &mut Pool<SUI, USDC>
-        tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-        tradeProof,                    // trade_proof: TradeProof
-        tx.pure.u64(Date.now()),       // client_order_id: u64 (unique ID)
-        tx.pure.u8(0),                 // self_matching_option: 0 = allowed
-        suiSold,                        // quantity: u64 (amount of SUI to sell)
-        tx.pure.bool(false),           // is_bid: false = sell base for quote
-        tx.pure.bool(true),            // pay_with_deep: true (use DEEP for fees if available)
-        tx.object('0x6'),              // clock: &Clock
+        tx.object(suiUsdcPoolId),  // pool: &mut Pool<SUI, USDC>
+        suiCoin,                    // base_in: Coin<SUI>
+        zeroDeepCoin,               // deep_in: Coin<DEEP> (zero - fees paid in quote)
+        tx.pure.u64(minQuoteOut),  // min_quote_out: u64
+        tx.object('0x6'),          // clock: &Clock
       ],
     });
 
-    // Step 4: Withdraw all USDC from Balance Manager
-    // withdraw_all<T>(balance_manager: &mut BalanceManager): Coin<T>
-    // Note: Only owner can call withdraw_all (no TradeCap needed)
-    const usdcCoin = tx.moveCall({
-      target: `${config.deepbook.packageId}::balance_manager::withdraw_all`,
-      typeArguments: [usdcTokenType!],
-      arguments: [
-        tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-      ],
-    });
-
-    // Step 5: Withdraw any remaining SUI (in case of partial fill)
-    const remainingSui = tx.moveCall({
-      target: `${config.deepbook.packageId}::balance_manager::withdraw_all`,
-      typeArguments: ['0x2::sui::SUI'],
-      arguments: [
-        tx.object(balanceManagerId!),
-      ],
+    // Step 4: Destroy the returned DEEP coin (should be zero)
+    tx.moveCall({
+      target: '0x2::coin::destroy_zero',
+      typeArguments: [deepTokenType],
+      arguments: [remainingDeep],
     });
 
     // Step 6: Complete swap execution - transfer USDC to user
