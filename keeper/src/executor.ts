@@ -239,13 +239,13 @@ export async function executeOrderWithSwap(
     });
 
     // Step 4: Withdraw all USDC from Balance Manager
-    // withdraw_all<T>(balance_manager: &mut BalanceManager, trade_cap: &TradeCap): Coin<T>
+    // withdraw_all<T>(balance_manager: &mut BalanceManager): Coin<T>
+    // Note: Only owner can call withdraw_all (no TradeCap needed)
     const usdcCoin = tx.moveCall({
       target: `${config.deepbook.packageId}::balance_manager::withdraw_all`,
       typeArguments: [usdcTokenType!],
       arguments: [
         tx.object(balanceManagerId!),  // balance_manager: &mut BalanceManager
-        tx.object(tradeCapId!),        // trade_cap: &TradeCap
       ],
     });
 
@@ -255,7 +255,6 @@ export async function executeOrderWithSwap(
       typeArguments: ['0x2::sui::SUI'],
       arguments: [
         tx.object(balanceManagerId!),
-        tx.object(tradeCapId!),
       ],
     });
 
