@@ -218,12 +218,13 @@ export function OrdersList() {
       await client.waitForTransaction({ digest: result.digest });
 
       refetch();
+      refetchBalance(); // Update balance after cancel
     } catch (err) {
       console.error('Failed to cancel order:', err);
     } finally {
       setCancellingId(null);
     }
-  }, [account, signAndExecute, client, refetch]);
+  }, [account, signAndExecute, client, refetch, refetchBalance]);
 
 
   return (
