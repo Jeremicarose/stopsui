@@ -94,13 +94,43 @@ export function useOrders() {
         limit: 50,
       });
 
+      // Fetch swap execution events (DeepBook integration)
+      const swapEvents = await client.queryEvents({
+        query: {
+          MoveEventType: `${CONTRACT.ORIGINAL_PACKAGE_ID}::executor::OrderExecutedWithSwapEvent`,
+        },
+        limit: 50,
+      });
+
       // Build a map of execution details by order ID
-      const executionMap = new Map<string, { executionPrice: bigint; executedAt: number }>();
+      const executionMap = new Map<string, {
+        executionPrice: bigint;
+        executedAt: number;
+        usdcReceived?: bigint;
+        wasSwapped?: boolean;
+      }>();
+
+      // Add regular execution events
       for (const event of executedEvents.data) {
         const parsed = event.parsedJson as { order_id: string; execution_price: string };
         executionMap.set(parsed.order_id, {
           executionPrice: BigInt(parsed.execution_price),
           executedAt: Number(event.timestampMs),
+        });
+      }
+
+      // Add/update with swap execution events (these have USDC received)
+      for (const event of swapEvents.data) {
+        const parsed = event.parsedJson as {
+          order_id: string;
+          execution_price: string;
+          usdc_received: string;
+        };
+        executionMap.set(parsed.order_id, {
+          executionPrice: BigInt(parsed.execution_price),
+          executedAt: Number(event.timestampMs),
+          usdcReceived: BigInt(parsed.usdc_received),
+          wasSwapped: true,
         });
       }
 
@@ -137,6 +167,9 @@ export function useOrders() {
               // Add execution details if available
               executionPrice: execution?.executionPrice,
               executedAt: execution?.executedAt,
+              // Add swap details if available
+              usdcReceived: execution?.usdcReceived,
+              wasSwapped: execution?.wasSwapped,
             } as Order;
           }
           return null;

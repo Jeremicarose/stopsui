@@ -94,9 +94,14 @@ function OrderCard({
               </div>
             </div>
             <div>
-              <div className="text-xs text-[var(--text-muted)] mb-1">Value at Execution</div>
+              <div className="text-xs text-[var(--text-muted)] mb-1">
+                {order.wasSwapped ? 'USDC Received' : 'Value at Execution'}
+              </div>
               <div className="font-mono font-semibold">
-                ${valueAtExecution?.toFixed(2) || 'N/A'}
+                {order.wasSwapped && order.usdcReceivedFormatted
+                  ? `$${order.usdcReceivedFormatted.toFixed(2)} USDC`
+                  : `$${valueAtExecution?.toFixed(2) || 'N/A'}`
+                }
               </div>
             </div>
           </div>
@@ -111,10 +116,15 @@ function OrderCard({
               <div className="text-xs text-[var(--text-secondary)]">
                 <p className="font-semibold mb-1">Order Executed Successfully</p>
                 <p className="text-[var(--text-muted)]">
-                  {isStopLoss
-                    ? `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price dropped to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. This protected you from further losses.`
-                    : `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price rose to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. Profits locked in!`
-                  }
+                  {order.wasSwapped ? (
+                    isStopLoss
+                      ? `Your ${order.amountSui.toFixed(4)} SUI was swapped for $${order.usdcReceivedFormatted?.toFixed(2) || '?'} USDC when price dropped to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. This protected you from further losses.`
+                      : `Your ${order.amountSui.toFixed(4)} SUI was swapped for $${order.usdcReceivedFormatted?.toFixed(2) || '?'} USDC when price rose to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. Profits locked in!`
+                  ) : (
+                    isStopLoss
+                      ? `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price dropped to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. This protected you from further losses.`
+                      : `Your ${order.amountSui.toFixed(4)} SUI was returned to your wallet when price rose to $${order.executionPriceUsd?.toFixed(4) || 'trigger'}. Profits locked in!`
+                  )}
                 </p>
               </div>
             </div>
