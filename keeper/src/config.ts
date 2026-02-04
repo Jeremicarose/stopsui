@@ -24,6 +24,11 @@ function optionalEnv(name: string, defaultValue: string): string {
   return process.env[name] || defaultValue;
 }
 
+// Helper to get optional env var (returns undefined if missing)
+function optionalEnvOrUndefined(name: string): string | undefined {
+  return process.env[name] || undefined;
+}
+
 export const config = {
   // Network
   network: optionalEnv('SUI_NETWORK', 'testnet'),
@@ -48,6 +53,34 @@ export const config = {
     '23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744'
   ),
 
+  // DeepBook v3 Configuration (for SUI→USDC swaps)
+  // Testnet package: 0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4
+  // Mainnet package: 0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809
+  deepbook: {
+    packageId: optionalEnv(
+      'DEEPBOOK_PACKAGE_ID',
+      '0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4' // testnet default
+    ),
+    // SUI/USDC pool object ID (must be configured per network)
+    suiUsdcPoolId: optionalEnvOrUndefined('SUI_USDC_POOL_ID'),
+    // Keeper's DEEP coin object ID for paying swap fees
+    deepCoinId: optionalEnvOrUndefined('DEEP_COIN_ID'),
+    // DEEP token type (testnet vs mainnet)
+    deepTokenType: optionalEnv(
+      'DEEP_TOKEN_TYPE',
+      '0x36dbef866a1d62bf7328989a10fb2f07d769f4ee587c0de4a0a256e57e0a58a8::deep::DEEP' // testnet
+    ),
+    // USDC token type (testnet vs mainnet)
+    usdcTokenType: optionalEnv(
+      'USDC_TOKEN_TYPE',
+      '0xa1ec7fc00a6f40db9693ad1415d0c193ad3906494428cf252621037bd7117e29::usdc::USDC' // testnet
+    ),
+    // Slippage tolerance in basis points (100 = 1%)
+    slippageBps: parseInt(optionalEnv('SLIPPAGE_BPS', '50')), // 0.5% default
+    // Enable/disable swap functionality
+    swapEnabled: optionalEnv('DEEPBOOK_SWAP_ENABLED', 'false') === 'true',
+  },
+
   // Polling
   pollIntervalMs: parseInt(optionalEnv('POLL_INTERVAL_MS', '5000')),
 
@@ -65,5 +98,29 @@ export function logConfig() {
   console.log(`Vault: ${config.vaultId}`);
   console.log(`Executor Cap: ${config.executorCapId}`);
   console.log(`Poll Interval: ${config.pollIntervalMs}ms`);
+  console.log('--- DeepBook Settings ---');
+  console.log(`Swap Enabled: ${config.deepbook.swapEnabled}`);
+  if (config.deepbook.swapEnabled) {
+    console.log(`DeepBook Package: ${config.deepbook.packageId}`);
+    console.log(`SUI/USDC Pool: ${config.deepbook.suiUsdcPoolId || 'NOT SET'}`);
+    console.log(`DEEP Coin: ${config.deepbook.deepCoinId || 'NOT SET'}`);
+    console.log(`Slippage: ${config.deepbook.slippageBps} bps`);
+  }
   console.log('============================');
+}
+
+// Validate DeepBook configuration
+export function validateDeepBookConfig(): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+
+  if (config.deepbook.swapEnabled) {
+    if (!config.deepbook.suiUsdcPoolId) {
+      errors.push('SUI_USDC_POOL_ID is required when swaps are enabled');
+    }
+    if (!config.deepbook.deepCoinId) {
+      errors.push('DEEP_COIN_ID is required when swaps are enabled');
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }

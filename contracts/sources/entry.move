@@ -1,5 +1,12 @@
 /// Entry points for StopSui
 /// User-facing functions that combine operations atomically
+///
+/// DeepBook Integration:
+/// - execute_order_with_swap uses PTB to swap SUI→USDC
+/// - The keeper builds a PTB that:
+///   1. Calls execute_order_for_swap to get SUI
+///   2. Calls deepbook::pool::swap_exact_base_for_quote
+///   3. Calls complete_swap_execution to finalize
 module stopsui::entry {
     use sui::coin::Coin;
     use sui::sui::SUI;
@@ -140,6 +147,139 @@ module stopsui::entry {
             clock,
             ctx
         );
+    }
+
+    // ============ DeepBook Swap Entry Points ============
+
+    /// Step 1 of swap execution: Execute order and get SUI coin
+    /// Called by keeper's PTB before the DeepBook swap
+    ///
+    /// Returns the SUI coin that will be passed to DeepBook swap
+    public fun execute_order_for_swap(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        vault: &mut Vault,
+        executor_cap: &ExecutorCap,
+        pyth_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): (Coin<SUI>, address, ID, u64, u64) {
+        executor::execute_order_for_swap(
+            registry,
+            order,
+            vault,
+            executor_cap,
+            pyth_price,
+            clock,
+            ctx
+        )
+    }
+
+    /// Step 2 of swap execution: Finalize after DeepBook swap
+    /// Called by keeper's PTB after the DeepBook swap completes
+    ///
+    /// - usdc_coin: The USDC received from DeepBook swap
+    /// - remaining_sui: Any SUI not swapped (returned to keeper)
+    /// - remaining_deep: Unused DEEP tokens (returned to keeper)
+    /// - order_id, owner, sui_sold, execution_price: From step 1
+    public entry fun complete_swap_execution<QuoteAsset>(
+        usdc_coin: Coin<QuoteAsset>,
+        remaining_sui: Coin<SUI>,
+        order_id: ID,
+        owner: address,
+        sui_sold: u64,
+        execution_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let usdc_received = usdc_coin.value();
+
+        // Transfer USDC to user
+        transfer::public_transfer(usdc_coin, owner);
+
+        // Return remaining SUI to keeper (should be zero or dust)
+        if (remaining_sui.value() > 0) {
+            transfer::public_transfer(remaining_sui, ctx.sender());
+        } else {
+            remaining_sui.destroy_zero();
+        };
+
+        // Emit swap execution event
+        executor::emit_swap_execution_event(
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            clock,
+        );
+
+        // Create and transfer execution receipt to user
+        let receipt = executor::create_swap_receipt(
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            clock,
+            ctx
+        );
+        transfer::public_transfer(receipt, owner);
+    }
+
+    /// Simplified swap completion that returns DEEP to keeper
+    /// Use this version when you have DEEP tokens to return
+    public entry fun complete_swap_execution_with_deep<QuoteAsset, DeepAsset>(
+        usdc_coin: Coin<QuoteAsset>,
+        remaining_sui: Coin<SUI>,
+        remaining_deep: Coin<DeepAsset>,
+        order_id: ID,
+        owner: address,
+        sui_sold: u64,
+        execution_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let usdc_received = usdc_coin.value();
+
+        // Transfer USDC to user
+        transfer::public_transfer(usdc_coin, owner);
+
+        // Return remaining SUI to keeper (should be zero or dust)
+        if (remaining_sui.value() > 0) {
+            transfer::public_transfer(remaining_sui, ctx.sender());
+        } else {
+            remaining_sui.destroy_zero();
+        };
+
+        // Return remaining DEEP to keeper
+        if (remaining_deep.value() > 0) {
+            transfer::public_transfer(remaining_deep, ctx.sender());
+        } else {
+            remaining_deep.destroy_zero();
+        };
+
+        // Emit swap execution event
+        executor::emit_swap_execution_event(
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            clock,
+        );
+
+        // Create and transfer execution receipt to user
+        let receipt = executor::create_swap_receipt(
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            clock,
+            ctx
+        );
+        transfer::public_transfer(receipt, owner);
     }
 
     // ============ View Helpers ============

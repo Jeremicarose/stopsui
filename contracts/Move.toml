@@ -5,11 +5,16 @@ edition = "2024.beta"
 
 [dependencies]
 # Sui framework is auto-included
+# DeepBook v3 for SUI/USDC swaps - we call via PTB at runtime
+# Testnet: 0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4
+# Mainnet: 0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809
 
 [addresses]
 stopsui = "0x0"
 # Pyth mainnet package - we'll call this via PTB at runtime
 pyth = "0x04e20ddf36af412a4096f9014f4a565af9e812db9a05cc40254846cf6ed0ad91"
+# DeepBook v3 - testnet address (update to mainnet for production)
+deepbook = "0x56d90d0c055edb534b22820571f0ff6d2b484c38f659e17d99c22fe0214c66e4"
 
 [dev-addresses]
 stopsui = "0x0"

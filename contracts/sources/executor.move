@@ -6,6 +6,11 @@
 /// - Keeper calls pyth::update_single_price_feed to update on-chain
 /// - Keeper reads fresh price and calls execute_order
 /// - Contract validates price is from authorized keeper
+///
+/// DeepBook Integration:
+/// - execute_order_with_swap swaps SUI→USDC on DeepBook v3
+/// - Keeper pays DEEP token fees for swaps
+/// - Slippage protection via min_quote_out parameter
 module stopsui::executor {
     use sui::coin::{Self, Coin};
     use sui::sui::SUI;
@@ -40,6 +45,16 @@ module stopsui::executor {
         order_id: ID,
         owner: address,
         sui_amount: u64,
+        execution_price: u64,
+        timestamp: u64,
+    }
+
+    /// Event emitted when an order is executed with a DeepBook swap
+    public struct OrderExecutedWithSwapEvent has copy, drop {
+        order_id: ID,
+        owner: address,
+        sui_sold: u64,
+        usdc_received: u64,
         execution_price: u64,
         timestamp: u64,
     }
@@ -186,6 +201,92 @@ module stopsui::executor {
         let owner = receipt.owner;
         transfer::public_transfer(sui_coin, owner);
         transfer::public_transfer(receipt, owner);
+    }
+
+    // ============ DeepBook Integration ============
+
+    /// Execute an order and return the SUI coin for external swap
+    /// This is called by entry::execute_order_with_swap which handles
+    /// the DeepBook swap via PTB (Programmable Transaction Block)
+    ///
+    /// Returns: (SUI coin to swap, owner address, order_id, sui_amount, execution_price)
+    public fun execute_order_for_swap(
+        registry: &mut OrderRegistry,
+        order: &mut StopOrder,
+        vault: &mut Vault,
+        executor_cap: &ExecutorCap,
+        pyth_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): (Coin<SUI>, address, ID, u64, u64) {
+        // Verify order is still pending
+        assert!(order_registry::is_pending(order), EOrderNotPending);
+
+        // Basic price sanity check
+        assert!(pyth_price >= MIN_PRICE && pyth_price <= MAX_PRICE, EPriceOutOfRange);
+
+        // Verify trigger condition is met
+        assert!(check_trigger(order, pyth_price), ETriggerNotMet);
+
+        let order_id = order_registry::order_id(order);
+        let sui_amount = order_registry::order_amount(order);
+
+        // Withdraw SUI from vault (ExecutorCap authorizes this)
+        let (sui_coin, owner) = vault::withdraw_for_execution(
+            vault,
+            executor_cap,
+            order_id,
+            ctx
+        );
+
+        // Mark order as executed in registry
+        order_registry::mark_executed(registry, order, pyth_price);
+
+        // Return values needed for swap completion
+        (sui_coin, owner, order_id, sui_amount, pyth_price)
+    }
+
+    /// Emit event after swap completion
+    /// Called by entry module after DeepBook swap is done
+    public fun emit_swap_execution_event(
+        order_id: ID,
+        owner: address,
+        sui_sold: u64,
+        usdc_received: u64,
+        execution_price: u64,
+        clock: &Clock,
+    ) {
+        let timestamp = clock.timestamp_ms();
+
+        event::emit(OrderExecutedWithSwapEvent {
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            timestamp,
+        });
+    }
+
+    /// Create an execution receipt for swap
+    public fun create_swap_receipt(
+        order_id: ID,
+        owner: address,
+        sui_sold: u64,
+        usdc_received: u64,
+        execution_price: u64,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): ExecutionReceipt {
+        ExecutionReceipt {
+            id: object::new(ctx),
+            order_id,
+            owner,
+            sui_sold,
+            usdc_received,
+            execution_price,
+            timestamp: clock.timestamp_ms(),
+        }
     }
 
     // ============ View Functions ============
