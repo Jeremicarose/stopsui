@@ -1,8 +1,7 @@
 /**
  * Test script to debug DeepBook swap independently
  *
- * Performs a standalone swap_exact_base_for_quote on the SUI/DBUSDC pool
- * to verify the swap works outside of our contract.
+ * Tests multiple swap approaches on the SUI/USDC pool.
  *
  * Usage: npx tsx src/test-swap.ts
  */
@@ -28,98 +27,186 @@ async function main() {
   console.log(`Address: ${address}`);
 
   const {
+    packageId,
     suiUsdcPoolId,
     deepTokenType,
     usdcTokenType,
   } = config.deepbook;
 
-  // Swap 1 SUI for USDC
   const suiAmount = 1_000_000_000n; // 1 SUI
-  const minQuoteOut = 0n; // Accept any amount for testing
 
-  console.log(`\nSwapping ${suiAmount} MIST (1 SUI) for DBUSDC...`);
-  console.log(`Pool: ${suiUsdcPoolId}`);
-  console.log(`DEEP type: ${deepTokenType}`);
+  console.log(`\nPool: ${suiUsdcPoolId}`);
+  console.log(`DeepBook Package: ${packageId}`);
   console.log(`USDC type: ${usdcTokenType}`);
-  console.log(`Min quote out: ${minQuoteOut}`);
 
-  const tx = new Transaction();
-
-  // Split 1 SUI from gas
-  const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
-
-  // Create zero DEEP coin for fees
-  const zeroDeepCoin = tx.moveCall({
-    target: '0x2::coin::zero',
-    typeArguments: [deepTokenType!],
-    arguments: [],
-  });
-
-  // Swap SUI for USDC (use ORIGINAL DeepBook package that created the pool)
-  const DEEPBOOK_ORIGINAL = '0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809';
-  console.log(`\nUsing DeepBook package: ${DEEPBOOK_ORIGINAL} (original)`);
-  console.log(`Config package:         ${config.deepbook.packageId} (upgraded)`);
-  const [remainingSui, usdcCoin, remainingDeep] = tx.moveCall({
-    target: `${DEEPBOOK_ORIGINAL}::pool::swap_exact_base_for_quote`,
-    typeArguments: [
-      '0x2::sui::SUI',
-      usdcTokenType!,
-    ],
-    arguments: [
-      tx.object(suiUsdcPoolId!),
-      suiCoin,
-      zeroDeepCoin,
-      tx.pure.u64(minQuoteOut),
-      tx.object('0x6'),
-    ],
-  });
-
-  // Transfer results to self
-  tx.transferObjects([remainingSui, usdcCoin, remainingDeep], address);
-
-  console.log('\nDry-running transaction...');
-  tx.setSender(address);
-
-  try {
-    const dryRun = await client.dryRunTransactionBlock({
-      transactionBlock: await tx.build({ client }),
+  // === Test 1: Query expected output with input fee ===
+  console.log('\n--- Test 1: get_quote_quantity_out (with DEEP fee) ---');
+  {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${packageId}::pool::get_quote_quantity_out`,
+      typeArguments: ['0x2::sui::SUI', usdcTokenType!],
+      arguments: [
+        tx.object(suiUsdcPoolId!),
+        tx.pure.u64(suiAmount),
+        tx.object('0x6'),
+      ],
     });
-
-    console.log(`\nDry run status: ${dryRun.effects.status.status}`);
-    if (dryRun.effects.status.status !== 'success') {
-      console.log(`Error: ${dryRun.effects.status.error}`);
-      return;
-    }
-
-    // Check balance changes
-    console.log('\nBalance changes:');
-    for (const change of dryRun.balanceChanges) {
-      console.log(`  ${change.coinType}: ${change.amount}`);
-    }
-
-    console.log('\nDry run succeeded! Executing for real...');
-
-    const result = await client.signAndExecuteTransaction({
-      signer: keypair,
-      transaction: tx,
-      options: {
-        showEffects: true,
-        showEvents: true,
-        showBalanceChanges: true,
-      },
-    });
-
-    console.log(`\nDigest: ${result.digest}`);
-    console.log(`Status: ${result.effects?.status?.status}`);
-
-    if (result.balanceChanges) {
-      console.log('\nBalance changes:');
-      for (const change of result.balanceChanges) {
-        console.log(`  ${change.coinType}: ${change.amount}`);
+    tx.setSender(address);
+    try {
+      const result = await client.devInspectTransactionBlock({
+        transactionBlock: await tx.build({ client }),
+        sender: address,
+      });
+      console.log(`Status: ${result.effects.status.status}`);
+      if (result.results?.[0]?.returnValues) {
+        for (const rv of result.results[0].returnValues) {
+          const bytes = rv[0];
+          console.log(`Return value (raw bytes): [${bytes}]`);
+        }
       }
+    } catch (e) {
+      console.log(`Error: ${e instanceof Error ? e.message : e}`);
     }
-  } catch (error) {
-    console.error('\nError:', error instanceof Error ? error.message : error);
+  }
+
+  // === Test 2: Query expected output with input token fee ===
+  console.log('\n--- Test 2: get_quote_quantity_out_input_fee ---');
+  {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${packageId}::pool::get_quote_quantity_out_input_fee`,
+      typeArguments: ['0x2::sui::SUI', usdcTokenType!],
+      arguments: [
+        tx.object(suiUsdcPoolId!),
+        tx.pure.u64(suiAmount),
+        tx.object('0x6'),
+      ],
+    });
+    tx.setSender(address);
+    try {
+      const result = await client.devInspectTransactionBlock({
+        transactionBlock: await tx.build({ client }),
+        sender: address,
+      });
+      console.log(`Status: ${result.effects.status.status}`);
+      if (result.results?.[0]?.returnValues) {
+        for (const rv of result.results[0].returnValues) {
+          const bytes = rv[0];
+          // Parse u64 from BCS bytes (little-endian)
+          let val = 0n;
+          for (let i = bytes.length - 1; i >= 0; i--) {
+            val = (val << 8n) | BigInt(bytes[i]);
+          }
+          console.log(`Expected output: ${val}`);
+        }
+      }
+    } catch (e) {
+      console.log(`Error: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  // === Test 3: swap_exact_quantity (takes both base+quote coins) ===
+  console.log('\n--- Test 3: swap_exact_quantity (dry run) ---');
+  {
+    const tx = new Transaction();
+
+    // Split SUI from gas
+    const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
+
+    // Zero USDC coin
+    const zeroUsdc = tx.moveCall({
+      target: '0x2::coin::zero',
+      typeArguments: [usdcTokenType!],
+      arguments: [],
+    });
+
+    // Zero DEEP coin
+    const zeroDeep = tx.moveCall({
+      target: '0x2::coin::zero',
+      typeArguments: [deepTokenType!],
+      arguments: [],
+    });
+
+    // swap_exact_quantity takes: pool, baseCoin, quoteCoin, deepCoin, minOut, clock
+    const [baseCoinOut, quoteCoinOut, deepCoinOut] = tx.moveCall({
+      target: `${packageId}::pool::swap_exact_quantity`,
+      typeArguments: ['0x2::sui::SUI', usdcTokenType!],
+      arguments: [
+        tx.object(suiUsdcPoolId!),
+        suiCoin,
+        zeroUsdc,
+        zeroDeep,
+        tx.pure.u64(0), // min out = 0 for testing
+        tx.object('0x6'),
+      ],
+    });
+
+    tx.transferObjects([baseCoinOut, quoteCoinOut, deepCoinOut], address);
+    tx.setSender(address);
+
+    try {
+      const dryRun = await client.dryRunTransactionBlock({
+        transactionBlock: await tx.build({ client }),
+      });
+      console.log(`Status: ${dryRun.effects.status.status}`);
+      if (dryRun.effects.status.status !== 'success') {
+        console.log(`Error: ${dryRun.effects.status.error}`);
+      } else {
+        console.log('Balance changes:');
+        for (const bc of dryRun.balanceChanges) {
+          console.log(`  ${bc.coinType}: ${bc.amount}`);
+        }
+      }
+    } catch (e) {
+      console.log(`Error: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+
+  // === Test 4: swap_exact_base_for_quote with upgraded package ===
+  console.log('\n--- Test 4: swap_exact_base_for_quote (upgraded pkg, dry run) ---');
+  {
+    const tx = new Transaction();
+
+    const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
+
+    const zeroDeep = tx.moveCall({
+      target: '0x2::coin::zero',
+      typeArguments: [deepTokenType!],
+      arguments: [],
+    });
+
+    const [remainingSui, usdcCoin, remainingDeep] = tx.moveCall({
+      target: `${packageId}::pool::swap_exact_base_for_quote`,
+      typeArguments: ['0x2::sui::SUI', usdcTokenType!],
+      arguments: [
+        tx.object(suiUsdcPoolId!),
+        suiCoin,
+        zeroDeep,
+        tx.pure.u64(0),
+        tx.object('0x6'),
+      ],
+    });
+
+    tx.transferObjects([remainingSui, usdcCoin, remainingDeep], address);
+    tx.setSender(address);
+
+    try {
+      const dryRun = await client.dryRunTransactionBlock({
+        transactionBlock: await tx.build({ client }),
+      });
+      console.log(`Status: ${dryRun.effects.status.status}`);
+      if (dryRun.effects.status.status !== 'success') {
+        console.log(`Error: ${dryRun.effects.status.error}`);
+      } else {
+        console.log('Balance changes:');
+        for (const bc of dryRun.balanceChanges) {
+          console.log(`  ${bc.coinType}: ${bc.amount}`);
+        }
+      }
+    } catch (e) {
+      console.log(`Error: ${e instanceof Error ? e.message : e}`);
+    }
   }
 }
 
