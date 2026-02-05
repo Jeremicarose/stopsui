@@ -194,12 +194,15 @@ module stopsui::entry {
     ) {
         let usdc_received = usdc_coin.value();
 
+        // Abort if swap produced nothing (pool has no liquidity)
+        assert!(usdc_received > 0, 100);
+
         // Transfer USDC to user
         transfer::public_transfer(usdc_coin, owner);
 
-        // Return remaining SUI to keeper (should be zero or dust)
+        // Return remaining SUI to user (not keeper) - handles partial fills
         if (remaining_sui.value() > 0) {
-            transfer::public_transfer(remaining_sui, ctx.sender());
+            transfer::public_transfer(remaining_sui, owner);
         } else {
             remaining_sui.destroy_zero();
         };

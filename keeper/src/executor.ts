@@ -292,14 +292,20 @@ export async function executeOrderWithSwap(
 
 /**
  * Execute a triggered order
- * Uses swap mode if enabled and configured, otherwise simple mode
+ * Uses swap mode if enabled and configured, otherwise simple mode.
+ * Falls back to simple execution if swap fails (e.g. no pool liquidity).
  */
 export async function executeOrder(
   order: StopOrder,
   currentPrice: bigint
 ): Promise<{ success: boolean; digest?: string; error?: string }> {
   if (config.deepbook.swapEnabled) {
-    return executeOrderWithSwap(order, currentPrice);
+    const result = await executeOrderWithSwap(order, currentPrice);
+    if (!result.success) {
+      console.log(`  Swap failed, falling back to simple execution...`);
+      return executeOrderSimple(order, currentPrice);
+    }
+    return result;
   } else {
     return executeOrderSimple(order, currentPrice);
   }
