@@ -224,14 +224,10 @@ export async function executeOrderWithSwap(
       ],
     });
 
-    // Step 4: Destroy the returned DEEP coin (should be zero)
-    tx.moveCall({
-      target: '0x2::coin::destroy_zero',
-      typeArguments: [deepTokenType],
-      arguments: [remainingDeep],
-    });
+    // Step 4: Transfer remaining DEEP to keeper (may be non-zero if fees are refunded)
+    tx.transferObjects([remainingDeep], kp.toSuiAddress());
 
-    // Step 6: Complete swap execution - transfer USDC to user
+    // Step 5: Complete swap execution - transfer USDC to user
     tx.moveCall({
       target: `${config.packageId}::entry::complete_swap_execution`,
       typeArguments: [usdcTokenType!],
@@ -302,7 +298,8 @@ export async function executeOrder(
   if (config.deepbook.swapEnabled) {
     const result = await executeOrderWithSwap(order, currentPrice);
     if (!result.success) {
-      console.log(`  Swap failed, falling back to simple execution...`);
+      console.log(`  Swap failed: ${result.error}`);
+      console.log(`  Falling back to simple execution...`);
       return executeOrderSimple(order, currentPrice);
     }
     return result;
