@@ -174,9 +174,18 @@ export async function executeOrderWithSwap(
     };
   }
 
+  // DeepBook SUI/DBUSDC pool min_size is 1 SUI (1_000_000_000 MIST)
+  const DEEPBOOK_MIN_SIZE = 1_000_000_000n;
+  const suiAmount = BigInt(order.baseAmount);
+  if (suiAmount < DEEPBOOK_MIN_SIZE) {
+    return {
+      success: false,
+      error: `Order amount ${suiAmount} MIST below DeepBook minimum ${DEEPBOOK_MIN_SIZE} MIST (1 SUI)`,
+    };
+  }
+
   try {
     // Calculate minimum USDC output with slippage protection
-    const suiAmount = BigInt(order.baseAmount);
     const minQuoteOut = calculateMinQuoteOut(suiAmount, currentPrice);
 
     console.log(`  Swap details: ${suiAmount} MIST → min ${minQuoteOut} USDC (slippage: ${config.deepbook.slippageBps}bps)`);
