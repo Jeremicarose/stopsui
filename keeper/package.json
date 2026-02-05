@@ -11,6 +11,7 @@
     "test": "tsx src/test-pyth.ts"
   },
   "dependencies": {
+    "@cetusprotocol/aggregator-sdk": "^1.4.4",
     "@mysten/deepbook-v3": "^0.28.3",
     "@mysten/sui": "^1.18.0",
     "@pythnetwork/pyth-sui-js": "^2.1.0",
