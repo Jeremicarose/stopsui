@@ -1,7 +1,8 @@
 /**
- * Test script to debug DeepBook swap independently
+ * Test Cetus Aggregator for SUI → USDC swap
  *
- * Tests a standalone swap using the DeepBook v3 SDK v1.0.3.
+ * Cetus aggregator routes through all major Sui DEXes (Cetus, DeepBook, Turbos, etc.)
+ * and handles fees automatically - no DEEP tokens required.
  *
  * Usage: npx tsx src/test-swap.ts
  */
@@ -9,7 +10,8 @@
 import { SuiClient, getFullnodeUrl } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { DeepBookClient } from '@mysten/deepbook-v3';
+import { AggregatorClient, Env } from '@cetusprotocol/aggregator-sdk';
+import BN from 'bn.js';
 import { config } from './config.js';
 
 async function main() {
@@ -29,125 +31,139 @@ async function main() {
   console.log(`Address: ${address}`);
   console.log(`Network: ${network}`);
 
-  const dbClient = new DeepBookClient({
-    address: address,
-    network: network,
+  // Initialize Cetus aggregator
+  const aggregator = new AggregatorClient({
+    env: network === 'mainnet' ? Env.Mainnet : Env.Testnet,
     client: client,
+    signer: address,
   });
 
-  const suiAmount = 1;
+  // Swap 1 SUI for USDC
+  const suiAmount = 1_000_000_000n; // 1 SUI in MIST
+  const usdcType = config.deepbook.usdcTokenType!;
 
-  console.log('\n=== Test 1: Check if pool is whitelisted ===');
+  console.log(`\n=== Cetus Aggregator Test ===`);
+  console.log(`Swapping: 1 SUI → USDC`);
+  console.log(`USDC type: ${usdcType}`);
+
   try {
-    const tx1 = new Transaction();
-    dbClient.deepBook.whitelisted('SUI_USDC')(tx1);
-    tx1.setSender(address);
-    const result1 = await client.devInspectTransactionBlock({
-      transactionBlock: await tx1.build({ client }),
-      sender: address,
+    // Step 1: Find best route
+    console.log(`\nFinding best route...`);
+    const routers = await aggregator.findRouters({
+      from: '0x2::sui::SUI',
+      target: usdcType,
+      amount: new BN(suiAmount.toString()),
+      byAmountIn: true,
+      depth: 3,
     });
-    console.log(`Status: ${result1.effects.status.status}`);
-    if (result1.results?.[0]?.returnValues) {
-      const bytes = result1.results[0].returnValues[0][0];
-      console.log(`Whitelisted: ${bytes[0] === 1 ? 'YES' : 'NO'}`);
-    }
-  } catch (e) {
-    console.log(`Error: ${e instanceof Error ? e.message : e}`);
-  }
 
-  console.log('\n=== Test 2: Check pool trade params ===');
-  try {
-    const tx2 = new Transaction();
-    dbClient.deepBook.poolTradeParams('SUI_USDC')(tx2);
-    tx2.setSender(address);
-    const result2 = await client.devInspectTransactionBlock({
-      transactionBlock: await tx2.build({ client }),
-      sender: address,
+    if (!routers) {
+      console.log('No route found');
+      return;
+    }
+
+    if (routers.insufficientLiquidity) {
+      console.log('Insufficient liquidity');
+      return;
+    }
+
+    const expectedUsdc = routers.amountOut.toString();
+    console.log(`✓ Route found!`);
+    console.log(`  Expected USDC: ${expectedUsdc} (${(parseInt(expectedUsdc) / 1_000_000).toFixed(4)} USDC)`);
+    console.log(`  Hops: ${routers.paths.length}`);
+
+    // Show route details
+    for (const path of routers.paths) {
+      console.log(`    → ${path.provider}: ${path.from.split('::').pop()} → ${path.target.split('::').pop()}`);
+    }
+
+    // Step 2: Build transaction
+    console.log(`\nBuilding transaction...`);
+    const tx = new Transaction();
+
+    // Split SUI from gas
+    const [suiCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(suiAmount)]);
+
+    // Execute swap via aggregator
+    const outputCoin = await aggregator.routerSwap({
+      router: routers,
+      inputCoin: suiCoin,
+      slippage: 0.01, // 1% slippage
+      txb: tx,
     });
-    console.log(`Status: ${result2.effects.status.status}`);
-    if (result2.results?.[0]?.returnValues) {
-      console.log('Trade params raw:', result2.results[0].returnValues);
-    }
-  } catch (e) {
-    console.log(`Error: ${e instanceof Error ? e.message : e}`);
-  }
 
-  console.log('\n=== Test 3: Get quote quantity out (DEEP fee) ===');
-  try {
-    const tx3 = new Transaction();
-    dbClient.deepBook.getQuoteQuantityOut('SUI_USDC', suiAmount)(tx3);
-    tx3.setSender(address);
-    const result3 = await client.devInspectTransactionBlock({
-      transactionBlock: await tx3.build({ client }),
-      sender: address,
-    });
-    console.log(`Status: ${result3.effects.status.status}`);
-    if (result3.effects.status.status !== 'success') {
-      console.log(`Error: ${result3.effects.status.error}`);
-    }
-    if (result3.results?.[0]?.returnValues) {
-      const bytes = result3.results[0].returnValues[0][0];
-      let val = 0n;
-      for (let i = bytes.length - 1; i >= 0; i--) {
-        val = (val << 8n) | BigInt(bytes[i]);
-      }
-      console.log(`Expected quote out (DEEP fee): ${val}`);
-    }
-  } catch (e) {
-    console.log(`Error: ${e instanceof Error ? e.message : e}`);
-  }
+    // Transfer output to self
+    tx.transferObjects([outputCoin], address);
 
-  console.log('\n=== Test 4: Get quote quantity out (INPUT fee) ===');
-  try {
-    const tx4 = new Transaction();
-    dbClient.deepBook.getQuoteQuantityOutInputFee('SUI_USDC', suiAmount)(tx4);
-    tx4.setSender(address);
-    const result4 = await client.devInspectTransactionBlock({
-      transactionBlock: await tx4.build({ client }),
-      sender: address,
-    });
-    console.log(`Status: ${result4.effects.status.status}`);
-    if (result4.effects.status.status !== 'success') {
-      console.log(`Error: ${result4.effects.status.error}`);
-    }
-    if (result4.results?.[0]?.returnValues) {
-      const bytes = result4.results[0].returnValues[0][0];
-      let val = 0n;
-      for (let i = bytes.length - 1; i >= 0; i--) {
-        val = (val << 8n) | BigInt(bytes[i]);
-      }
-      console.log(`Expected quote out (INPUT fee): ${val}`);
-    }
-  } catch (e) {
-    console.log(`Error: ${e instanceof Error ? e.message : e}`);
-  }
-
-  console.log('\n=== Test 5: Swap with 0.1 DEEP for fees ===');
-  try {
-    const tx5 = new Transaction();
-    const [baseCoin, quoteCoin, deepCoin] = dbClient.deepBook.swapExactBaseForQuote({
-      poolKey: 'SUI_USDC',
-      amount: suiAmount,
-      deepAmount: 0.1, // Provide some DEEP for fees
-      minOut: 0,
-    })(tx5);
-    tx5.transferObjects([baseCoin, quoteCoin, deepCoin], address);
-    tx5.setSender(address);
+    // Step 3: Dry run
+    console.log(`\nDry-running transaction...`);
+    tx.setSender(address);
 
     const dryRun = await client.dryRunTransactionBlock({
-      transactionBlock: await tx5.build({ client }),
+      transactionBlock: await tx.build({ client }),
     });
+
     console.log(`Status: ${dryRun.effects.status.status}`);
+
     if (dryRun.effects.status.status !== 'success') {
       console.log(`Error: ${dryRun.effects.status.error}`);
+      return;
     }
-    console.log('Balance changes:');
+
+    console.log(`\nBalance changes:`);
     for (const bc of dryRun.balanceChanges) {
       const coinType = bc.coinType.split('::').pop();
-      console.log(`  ${coinType}: ${bc.amount}`);
+      const amount = parseInt(bc.amount);
+      if (coinType === 'SUI') {
+        console.log(`  SUI: ${(amount / 1_000_000_000).toFixed(4)}`);
+      } else if (coinType === 'USDC') {
+        console.log(`  USDC: ${(amount / 1_000_000).toFixed(4)}`);
+      } else {
+        console.log(`  ${coinType}: ${bc.amount}`);
+      }
     }
-  } catch (e) {
-    console.log(`Error: ${e instanceof Error ? e.message : e}`);
+
+    // Check if we got USDC
+    const usdcChange = dryRun.balanceChanges.find(c => c.coinType.toLowerCase().includes('usdc'));
+    if (usdcChange && parseInt(usdcChange.amount) > 0) {
+      console.log(`\n✓ SUCCESS! Swap would work.`);
+      console.log(`  Would receive: ${(parseInt(usdcChange.amount) / 1_000_000).toFixed(4)} USDC`);
+
+      // Execute for real
+      console.log(`\nExecuting swap...`);
+      const result = await client.signAndExecuteTransaction({
+        signer: keypair,
+        transaction: tx,
+        options: {
+          showEffects: true,
+          showBalanceChanges: true,
+        },
+      });
+
+      console.log(`\nTransaction executed!`);
+      console.log(`Digest: ${result.digest}`);
+      console.log(`Status: ${result.effects?.status?.status}`);
+
+      if (result.balanceChanges) {
+        console.log(`\nActual balance changes:`);
+        for (const bc of result.balanceChanges) {
+          const coinType = bc.coinType.split('::').pop();
+          const amount = parseInt(bc.amount);
+          if (coinType === 'SUI') {
+            console.log(`  SUI: ${(amount / 1_000_000_000).toFixed(4)}`);
+          } else if (coinType === 'USDC') {
+            console.log(`  USDC: ${(amount / 1_000_000).toFixed(4)}`);
+          } else {
+            console.log(`  ${coinType}: ${bc.amount}`);
+          }
+        }
+      }
+    } else {
+      console.log(`\n✗ No USDC in output`);
+    }
+
+  } catch (error) {
+    console.error(`\nError:`, error instanceof Error ? error.message : error);
   }
 }
 
