@@ -55,9 +55,12 @@ async function main() {
     arguments: [],
   });
 
-  // Swap SUI for USDC
+  // Swap SUI for USDC (use ORIGINAL DeepBook package that created the pool)
+  const DEEPBOOK_ORIGINAL = '0x2c8d603bc51326b8c13cef9dd07031a408a48dddb541963357661df5d3204809';
+  console.log(`\nUsing DeepBook package: ${DEEPBOOK_ORIGINAL} (original)`);
+  console.log(`Config package:         ${config.deepbook.packageId} (upgraded)`);
   const [remainingSui, usdcCoin, remainingDeep] = tx.moveCall({
-    target: `${config.deepbook.packageId}::pool::swap_exact_base_for_quote`,
+    target: `${DEEPBOOK_ORIGINAL}::pool::swap_exact_base_for_quote`,
     typeArguments: [
       '0x2::sui::SUI',
       usdcTokenType!,
