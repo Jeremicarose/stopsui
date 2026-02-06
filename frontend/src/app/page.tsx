@@ -46,7 +46,7 @@ export default function Home() {
               <div className="text-xs text-[var(--text-muted)]">Execution Time</div>
             </div>
             <div className="card-elevated p-4 text-center">
-              <div className="text-2xl font-bold">Testnet</div>
+              <div className="text-2xl font-bold">Mainnet</div>
               <div className="text-xs text-[var(--text-muted)]">Network</div>
             </div>
           </div>
