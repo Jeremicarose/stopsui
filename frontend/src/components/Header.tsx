@@ -57,7 +57,7 @@ export function Header() {
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border-subtle)]">
             <span className="w-2 h-2 rounded-full bg-[var(--take-profit)] animate-pulse" />
-            <span className="text-xs font-medium text-[var(--text-secondary)]">Testnet</span>
+            <span className="text-xs font-medium text-[var(--text-secondary)]">Mainnet</span>
           </div>
 
           <div className="connect-wallet">
