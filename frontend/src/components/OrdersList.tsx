@@ -249,6 +249,32 @@ export function OrdersList() {
 
   return (
     <div className="card p-6 animate-slide-up delay-200">
+      {/* Connected wallet info */}
+      {account && (
+        <div className="mb-4 p-3 rounded-lg bg-[var(--bg-primary)] border border-[var(--border-subtle)]">
+          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <rect x="2" y="6" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2"/>
+              <path d="M16 12h.01" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+            <span>Connected: </span>
+            <span className="font-mono text-[var(--text-secondary)]">
+              {account.address.slice(0, 8)}...{account.address.slice(-6)}
+            </span>
+            <button
+              onClick={() => navigator.clipboard.writeText(account.address)}
+              className="ml-1 hover:text-[var(--text-secondary)] transition-colors"
+              title="Copy address"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                <rect x="8" y="8" width="12" height="12" rx="2" stroke="currentColor" strokeWidth="2"/>
+                <path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2" stroke="currentColor" strokeWidth="2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tab navigation */}
       <div className="flex items-center gap-1 mb-6 p-1 bg-[var(--bg-primary)] rounded-lg">
         <button

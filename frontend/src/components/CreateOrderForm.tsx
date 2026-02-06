@@ -58,6 +58,13 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
       return;
     }
 
+    // Check balance before attempting transaction
+    const requiredAmount = amountNum + GAS_RESERVE;
+    if (balance && balance.totalSui < requiredAmount) {
+      setError(`Insufficient balance. You need at least ${requiredAmount.toFixed(4)} SUI (${amountNum} for order + ${GAS_RESERVE} for gas). You have ${balance.totalSui.toFixed(4)} SUI.`);
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
@@ -105,7 +112,21 @@ export function CreateOrderForm({ onSuccess }: CreateOrderFormProps) {
       onSuccess?.();
     } catch (err) {
       console.error('Failed to create order:', err);
-      setError(err instanceof Error ? err.message : 'Failed to create order');
+      // Extract more useful error message
+      let errorMessage = 'Failed to create order';
+      if (err instanceof Error) {
+        // Check for common error patterns
+        if (err.message.includes('simulation')) {
+          errorMessage = 'Transaction simulation failed. Please check your balance and try again.';
+        } else if (err.message.includes('insufficient')) {
+          errorMessage = 'Insufficient balance. Make sure you have enough SUI for the order and gas.';
+        } else if (err.message.includes('rejected')) {
+          errorMessage = 'Transaction was rejected. Please try again.';
+        } else {
+          errorMessage = err.message;
+        }
+      }
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
