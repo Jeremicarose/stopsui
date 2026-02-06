@@ -5,39 +5,36 @@
  * Uses Sui's Programmable Transaction Blocks (PTB) to call
  * the entry::execute_order function.
  *
- * DeepBook v3 Integration (Balance Manager Pattern):
- * - Keeper has a pre-created Balance Manager (trading account on DeepBook)
- * - When swaps are enabled, builds a PTB that:
- *   1. Calls execute_order_for_swap to get SUI coin
- *   2. Deposits SUI into Balance Manager
- *   3. Places market sell order on DeepBook pool
- *   4. Withdraws USDC from Balance Manager
- *   5. Calls complete_swap_execution to transfer USDC to user
- * - Keeper should have DEEP deposited in Balance Manager for fee discounts
+ * Cetus Aggregator Integration:
+ * - Routes SUI→USDC swaps through all major Sui DEXes (Cetus, DeepBook, Turbos, etc.)
+ * - Automatically finds the best route and handles fees
+ * - No DEEP tokens required (unlike direct DeepBook integration)
+ * - Falls back to simple execution if swap fails
  */
 
-import { SuiClient } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 import { Ed25519Keypair } from '@mysten/sui/keypairs/ed25519';
-import { config, validateDeepBookConfig } from './config.js';
+import { AggregatorClient, Env } from '@cetusprotocol/aggregator-sdk';
+import BN from 'bn.js';
+import { config } from './config.js';
 import { StopOrder, getClient } from './orders.js';
 
 // Keeper's keypair (loaded once)
 let keypair: Ed25519Keypair | null = null;
+
+// Cetus aggregator client (loaded once)
+let aggregatorClient: AggregatorClient | null = null;
 
 /**
  * Get or create the keeper's keypair
  */
 function getKeypair(): Ed25519Keypair {
   if (!keypair) {
-    // Support both base64 and hex private keys
     const pk = config.privateKey;
 
     if (pk.startsWith('suiprivkey')) {
-      // Bech32 encoded private key
       keypair = Ed25519Keypair.fromSecretKey(pk);
     } else {
-      // Try base64 first, then hex
       try {
         const decoded = Buffer.from(pk, 'base64');
         keypair = Ed25519Keypair.fromSecretKey(decoded);
@@ -51,6 +48,21 @@ function getKeypair(): Ed25519Keypair {
 }
 
 /**
+ * Get or create the Cetus aggregator client
+ */
+function getAggregatorClient(): AggregatorClient {
+  if (!aggregatorClient) {
+    const kp = getKeypair();
+    aggregatorClient = new AggregatorClient({
+      env: config.network === 'mainnet' ? Env.Mainnet : Env.Testnet,
+      client: getClient(),
+      signer: kp.toSuiAddress(),
+    });
+  }
+  return aggregatorClient;
+}
+
+/**
  * Get keeper's address
  */
 export function getKeeperAddress(): string {
@@ -59,9 +71,6 @@ export function getKeeperAddress(): string {
 
 /**
  * Execute a triggered order (simple mode - returns SUI to user)
- *
- * Builds a PTB that calls:
- * entry::execute_order(registry, order, vault, executor_cap, price, clock)
  */
 export async function executeOrderSimple(
   order: StopOrder,
@@ -71,23 +80,20 @@ export async function executeOrderSimple(
   const kp = getKeypair();
 
   try {
-    // Build transaction
     const tx = new Transaction();
 
-    // Call execute_triggered_order (deployed function name)
     tx.moveCall({
       target: `${config.packageId}::entry::execute_triggered_order`,
       arguments: [
-        tx.object(config.orderRegistryId),    // registry: &mut OrderRegistry
-        tx.object(order.id),                   // order: &mut StopOrder
-        tx.object(config.vaultId),             // vault: &mut Vault
-        tx.object(config.executorCapId),       // executor_cap: &ExecutorCap
-        tx.pure.u64(currentPrice),             // pyth_price: u64
-        tx.object('0x6'),                      // clock: &Clock (system clock)
+        tx.object(config.orderRegistryId),
+        tx.object(order.id),
+        tx.object(config.vaultId),
+        tx.object(config.executorCapId),
+        tx.pure.u64(currentPrice),
+        tx.object('0x6'),
       ],
     });
 
-    // Sign and execute
     const result = await client.signAndExecuteTransaction({
       signer: kp,
       transaction: tx,
@@ -97,13 +103,9 @@ export async function executeOrderSimple(
       },
     });
 
-    // Check if successful
     const status = result.effects?.status?.status;
     if (status === 'success') {
-      return {
-        success: true,
-        digest: result.digest,
-      };
+      return { success: true, digest: result.digest };
     } else {
       return {
         success: false,
@@ -119,39 +121,13 @@ export async function executeOrderSimple(
 }
 
 /**
- * Calculate minimum USDC output with slippage protection
+ * Execute a triggered order with swap (SUI → USDC)
  *
- * Note: On testnet, pools have thin liquidity so we add extra buffer.
- * The actual slippage should be configured via SLIPPAGE_BPS in .env
- */
-function calculateMinQuoteOut(suiAmount: bigint, currentPrice: bigint): bigint {
-  // Expected USDC = (SUI amount * price) / PRICE_PRECISION
-  // Note: SUI has 9 decimals (MIST), USDC has 6 decimals
-  // currentPrice is scaled by 1e9, so:
-  // expectedUsdc = suiAmount * currentPrice / 1e9 / 1e3 (adjust for decimal diff)
-  const expectedUsdc = (suiAmount * currentPrice) / config.pricePrecision / 1000n;
-
-  // Apply slippage tolerance
-  const slippageMultiplier = 10000n - BigInt(config.deepbook.slippageBps);
-  let minQuoteOut = (expectedUsdc * slippageMultiplier) / 10000n;
-
-  // Extra safety buffer for testnet thin liquidity (additional 2%)
-  // This helps avoid validate_inputs failures due to order book depth
-  minQuoteOut = (minQuoteOut * 98n) / 100n;
-
-  return minQuoteOut;
-}
-
-/**
- * Execute a triggered order with DeepBook swap (SUI → USDC)
- *
- * Uses the simpler swap_exact_base_for_quote function:
- * 1. Execute order and get SUI coin from vault
- * 2. Create zero DEEP coin for fees
- * 3. Call swap_exact_base_for_quote (handles lot sizes automatically)
- * 4. Transfer USDC to user, return leftover SUI to keeper
- *
- * This approach is simpler than Balance Manager and handles lot size alignment.
+ * Uses Cetus Aggregator to find the best swap route across all Sui DEXes:
+ * 1. Find best route for SUI→USDC via Cetus aggregator API
+ * 2. Execute order and get SUI coin from vault
+ * 3. Swap SUI→USDC via aggregator (adds swap calls to same PTB)
+ * 4. Complete swap execution - transfer USDC to user
  */
 export async function executeOrderWithSwap(
   order: StopOrder,
@@ -159,42 +135,42 @@ export async function executeOrderWithSwap(
 ): Promise<{ success: boolean; digest?: string; error?: string; usdcReceived?: string }> {
   const client = getClient();
   const kp = getKeypair();
+  const aggregator = getAggregatorClient();
 
-  const {
-    suiUsdcPoolId,
-    deepTokenType,
-    usdcTokenType,
-  } = config.deepbook;
+  const { usdcTokenType } = config.deepbook;
 
-  // Basic validation
-  if (!suiUsdcPoolId || !usdcTokenType || !deepTokenType) {
-    return {
-      success: false,
-      error: 'DeepBook pool or token types not configured',
-    };
+  if (!usdcTokenType) {
+    return { success: false, error: 'USDC token type not configured' };
   }
 
-  // DeepBook SUI/DBUSDC pool min_size is 1 SUI (1_000_000_000 MIST)
-  const DEEPBOOK_MIN_SIZE = 1_000_000_000n;
   const suiAmount = BigInt(order.baseAmount);
-  if (suiAmount < DEEPBOOK_MIN_SIZE) {
-    return {
-      success: false,
-      error: `Order amount ${suiAmount} MIST below DeepBook minimum ${DEEPBOOK_MIN_SIZE} MIST (1 SUI)`,
-    };
-  }
 
   try {
-    // Calculate minimum USDC output with slippage protection
-    const minQuoteOut = calculateMinQuoteOut(suiAmount, currentPrice);
+    // Step 1: Find best swap route via Cetus aggregator
+    console.log(`  Finding swap route for ${suiAmount} MIST...`);
 
-    console.log(`  Swap details: ${suiAmount} MIST → min ${minQuoteOut} USDC (slippage: ${config.deepbook.slippageBps}bps)`);
+    const routers = await aggregator.findRouters({
+      from: '0x2::sui::SUI',
+      target: usdcTokenType,
+      amount: new BN(suiAmount.toString()),
+      byAmountIn: true,
+      depth: 3,
+    });
 
-    // Build PTB for swap execution using swap_exact_base_for_quote
+    if (!routers || routers.insufficientLiquidity) {
+      return {
+        success: false,
+        error: 'No swap route found or insufficient liquidity',
+      };
+    }
+
+    const expectedUsdc = routers.amountOut.toString();
+    console.log(`  Route: ${routers.paths.length} hop(s) → ~${(parseInt(expectedUsdc) / 1_000_000).toFixed(4)} USDC`);
+
+    // Step 2: Build PTB
     const tx = new Transaction();
 
-    // Step 1: Execute order and get SUI coin from vault
-    // Returns: (Coin<SUI>, address, ID, u64, u64) = (sui_coin, owner, order_id, sui_sold, execution_price)
+    // Execute order and get SUI coin from vault
     const [suiCoin, owner, orderId, suiSold, executionPrice] = tx.moveCall({
       target: `${config.packageId}::entry::execute_order_for_swap`,
       arguments: [
@@ -203,51 +179,39 @@ export async function executeOrderWithSwap(
         tx.object(config.vaultId),
         tx.object(config.executorCapId),
         tx.pure.u64(currentPrice),
-        tx.object('0x6'), // Clock
+        tx.object('0x6'),
       ],
     });
 
-    // Step 2: Create a zero DEEP coin for fees
-    // We use coin::zero to create an empty DEEP coin
-    const zeroDeepCoin = tx.moveCall({
+    // Step 3: Swap SUI→USDC via Cetus aggregator
+    const slippage = config.deepbook.slippageBps / 10000;
+    const usdcCoin = await aggregator.routerSwap({
+      router: routers,
+      inputCoin: suiCoin,
+      slippage,
+      txb: tx,
+    });
+
+    // Step 4: Create a zero SUI coin for remaining_sui parameter
+    // (aggregator consumes all input, no remaining SUI)
+    const zeroSui = tx.moveCall({
       target: '0x2::coin::zero',
-      typeArguments: [deepTokenType],
+      typeArguments: ['0x2::sui::SUI'],
       arguments: [],
     });
-
-    // Step 3: Swap SUI for USDC using swap_exact_base_for_quote
-    // This function handles lot sizes automatically and returns leftover
-    // Returns: (Coin<BaseAsset>, Coin<QuoteAsset>, Coin<DEEP>) = (leftover_sui, usdc_out, leftover_deep)
-    const [remainingSui, usdcCoin, remainingDeep] = tx.moveCall({
-      target: `${config.deepbook.packageId}::pool::swap_exact_base_for_quote`,
-      typeArguments: [
-        '0x2::sui::SUI',  // BaseAsset = SUI
-        usdcTokenType,    // QuoteAsset = USDC
-      ],
-      arguments: [
-        tx.object(suiUsdcPoolId),  // pool: &mut Pool<SUI, USDC>
-        suiCoin,                    // base_in: Coin<SUI>
-        zeroDeepCoin,               // deep_in: Coin<DEEP> (zero - fees paid in quote)
-        tx.pure.u64(minQuoteOut),  // min_quote_out: u64
-        tx.object('0x6'),          // clock: &Clock
-      ],
-    });
-
-    // Step 4: Transfer remaining DEEP to keeper (may be non-zero if fees are refunded)
-    tx.transferObjects([remainingDeep], kp.toSuiAddress());
 
     // Step 5: Complete swap execution - transfer USDC to user
     tx.moveCall({
       target: `${config.packageId}::entry::complete_swap_execution`,
-      typeArguments: [usdcTokenType!],
+      typeArguments: [usdcTokenType],
       arguments: [
-        usdcCoin,         // usdc_coin: Coin<USDC>
-        remainingSui,     // remaining_sui: Coin<SUI>
-        orderId,          // order_id: ID
-        owner,            // owner: address
-        suiSold,          // sui_sold: u64
-        executionPrice,   // execution_price: u64
-        tx.object('0x6'), // clock: &Clock
+        usdcCoin,
+        zeroSui,
+        orderId,
+        owner,
+        suiSold,
+        executionPrice,
+        tx.object('0x6'),
       ],
     });
 
@@ -258,15 +222,25 @@ export async function executeOrderWithSwap(
       options: {
         showEffects: true,
         showEvents: true,
+        showBalanceChanges: true,
       },
     });
 
-    // Check if successful
     const status = result.effects?.status?.status;
     if (status === 'success') {
-      // Try to extract USDC received from events
+      // Extract USDC received from balance changes
       let usdcReceived: string | undefined;
-      if (result.events) {
+      if (result.balanceChanges) {
+        const usdcChange = result.balanceChanges.find(bc =>
+          bc.coinType.toLowerCase().includes('usdc') && parseInt(bc.amount) > 0
+        );
+        if (usdcChange) {
+          usdcReceived = usdcChange.amount;
+        }
+      }
+
+      // Also check events
+      if (!usdcReceived && result.events) {
         const swapEvent = result.events.find(e =>
           e.type.includes('OrderExecutedWithSwapEvent')
         );
@@ -276,11 +250,7 @@ export async function executeOrderWithSwap(
         }
       }
 
-      return {
-        success: true,
-        digest: result.digest,
-        usdcReceived,
-      };
+      return { success: true, digest: result.digest, usdcReceived };
     } else {
       return {
         success: false,
@@ -297,8 +267,8 @@ export async function executeOrderWithSwap(
 
 /**
  * Execute a triggered order
- * Uses swap mode if enabled and configured, otherwise simple mode.
- * Falls back to simple execution if swap fails (e.g. no pool liquidity).
+ * Uses swap mode if enabled, otherwise simple mode.
+ * Falls back to simple execution if swap fails.
  */
 export async function executeOrder(
   order: StopOrder,
