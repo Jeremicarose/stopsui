@@ -165,7 +165,16 @@ export async function executeOrderWithSwap(
     }
 
     const expectedUsdc = routers.amountOut.toString();
-    console.log(`  Route: ${routers.paths.length} hop(s) → ~${(parseInt(expectedUsdc) / 1_000_000).toFixed(4)} USDC`);
+    console.log(`  ✓ Route found: ${routers.paths.length} hop(s) → ~${(parseInt(expectedUsdc) / 1_000_000).toFixed(4)} USDC`);
+
+    // Show detailed route path (which DEXes/pools are used)
+    console.log(`  Route path:`);
+    for (const path of routers.paths) {
+      const provider = path.provider || 'Unknown';
+      const fromToken = path.from.split('::').pop() || 'SUI';
+      const toToken = path.target.split('::').pop() || 'USDC';
+      console.log(`    → [${provider}] ${fromToken} → ${toToken}`);
+    }
 
     // Step 2: Build PTB
     const tx = new Transaction();
